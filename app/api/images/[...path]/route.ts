@@ -45,7 +45,7 @@ export async function GET(
     }
 
     // Return image with appropriate headers
-    return new Response(imageBuffer, {
+    return new Response(imageBuffer as BodyInit, {
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=3600', // Cache for 1 hour

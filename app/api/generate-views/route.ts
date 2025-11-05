@@ -208,11 +208,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Update project usage - 4 images generated, plus input tokens
-  const project = await prisma.project.findUnique({ where: { id: projectId } }) as any;
-  if (project) {
-    const newInputTokens = (project.totalInputTokens || 0) + totalInputTokens;
-    const newOutputTokens = project.totalOutputTokens || 0; // No change for images (billed per image)
-    const newImagesGenerated = (project.totalImagesGenerated || 0) + generatedViews.length;
+  // Re-fetch project to get latest usage stats
+  const updatedProject = await prisma.project.findUnique({ where: { id: projectId } });
+  if (updatedProject) {
+    const newInputTokens = (updatedProject.totalInputTokens || 0) + totalInputTokens;
+    const newOutputTokens = updatedProject.totalOutputTokens || 0; // No change for images (billed per image)
+    const newImagesGenerated = (updatedProject.totalImagesGenerated || 0) + generatedViews.length;
     const newCost = calculateTotalCost(
       newInputTokens,
       newOutputTokens,

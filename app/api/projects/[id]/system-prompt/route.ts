@@ -9,11 +9,14 @@ const updateSystemPromptSchema = z.object({
 });
 
 // GET: Retrieve the current project's custom system prompt
-export const GET = withErrorHandling(async (
+export const GET = withErrorHandling<{ params: Promise<{ id: string }> }>(async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context?: { params: Promise<{ id: string }> }
 ) => {
-  const id = await getRequiredParam(params, 'id');
+  if (!context) {
+    throw new Error('Context is required');
+  }
+  const id = await getRequiredParam(context.params, 'id');
   
   const project = await prisma.project.findUnique({
     where: { id },
@@ -30,11 +33,14 @@ export const GET = withErrorHandling(async (
 });
 
 // PUT: Update the project's custom system prompt
-export const PUT = withErrorHandling(async (
+export const PUT = withErrorHandling<{ params: Promise<{ id: string }> }>(async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context?: { params: Promise<{ id: string }> }
 ) => {
-  const id = await getRequiredParam(params, 'id');
+  if (!context) {
+    throw new Error('Context is required');
+  }
+  const id = await getRequiredParam(context.params, 'id');
   const { systemPrompt } = await validateRequestBody(request, updateSystemPromptSchema);
 
   const project = await prisma.project.findUnique({ where: { id } });

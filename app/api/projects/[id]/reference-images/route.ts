@@ -9,7 +9,7 @@ import { z } from 'zod';
 const uploadReferenceImageSchema = z.object({
   referenceImage: z.string().min(1, 'Reference image is required'),
   name: z.string().optional(),
-  colorDescriptions: z.record(z.string()).optional(),
+  colorDescriptions: z.record(z.string(), z.string()).optional(),
 });
 
 // GET all reference images for a project

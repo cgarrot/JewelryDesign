@@ -35,10 +35,10 @@ export function errorResponse(
 /**
  * Wraps an API handler with error handling
  */
-export function withErrorHandling(
-  handler: (request: NextRequest, context?: unknown) => Promise<NextResponse>
+export function withErrorHandling<T = unknown>(
+  handler: (request: NextRequest, context?: T) => Promise<NextResponse>
 ) {
-  return async (request: NextRequest, context?: unknown) => {
+  return async (request: NextRequest, context?: T) => {
     try {
       return await handler(request, context);
     } catch (error) {

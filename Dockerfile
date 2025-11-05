@@ -1,30 +1,28 @@
-# Stage 1: Dependencies
-FROM node:20-alpine AS deps
+# Stage 1: Builder
+FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Copy package files
+# Copy package files first (for better cache)
 COPY package.json package-lock.json* pnpm-lock.yaml* ./
 
-# Install dependencies based on package manager
+# Install dependencies (will use cache if package files unchanged)
 RUN \
   if [ -f pnpm-lock.yaml ]; then \
-    corepack enable pnpm && pnpm install --frozen-lockfile; \
+    corepack enable pnpm && pnpm install --no-frozen-lockfile; \
   elif [ -f package-lock.json ]; then \
     npm ci; \
   else \
     npm install; \
   fi
 
-# Stage 2: Builder
-FROM node:20-alpine AS builder
-WORKDIR /app
-
-# Copy dependencies from deps stage
-COPY --from=deps /app/node_modules ./node_modules
+# Copy application code (node_modules already installed, won't be overwritten)
 COPY . .
 
-# Generate Prisma Client
+# Generate Prisma Client (DATABASE_URL required for prisma.config.ts but not used for generate)
+# Use build arg if provided, otherwise use dummy value
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL:-"postgresql://dummy:dummy@localhost:5432/dummy"}
 RUN npx prisma generate
 
 # Set production environment
@@ -39,7 +37,18 @@ RUN \
     npm run build; \
   fi
 
-# Stage 3: Runner
+# Collect Prisma files to a known location for copying to runner stage
+RUN mkdir -p /app/.prisma-collect && \
+  if [ -d /app/node_modules/.prisma ]; then \
+    cp -r /app/node_modules/.prisma /app/.prisma-collect/; \
+  fi && \
+  if [ -d /app/node_modules/@prisma ]; then \
+    cp -r /app/node_modules/@prisma /app/.prisma-collect/; \
+  fi && \
+  find /app/node_modules -type d -name ".prisma" ! -path "*/node_modules/.prisma" -maxdepth 5 -exec sh -c 'mkdir -p /app/.prisma-collect/.prisma && cp -r {}/* /app/.prisma-collect/.prisma/ 2>/dev/null || true' \; && \
+  find /app/node_modules -type d -path "*/@prisma" ! -path "*/node_modules/@prisma" -maxdepth 5 -exec sh -c 'mkdir -p /app/.prisma-collect/@prisma && cp -r {}/* /app/.prisma-collect/@prisma/ 2>/dev/null || true' \;
+
+# Stage 2: Runner
 FROM node:20-alpine AS runner
 WORKDIR /app
 
@@ -58,8 +67,17 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Copy Prisma client files from collected location
+RUN mkdir -p ./node_modules
+COPY --from=builder /app/.prisma-collect ./prisma-collect-temp
+RUN if [ -d ./prisma-collect-temp/.prisma ]; then \
+      cp -r ./prisma-collect-temp/.prisma ./node_modules/; \
+    fi && \
+    if [ -d ./prisma-collect-temp/@prisma ]; then \
+      cp -r ./prisma-collect-temp/@prisma ./node_modules/; \
+    fi && \
+    rm -rf ./prisma-collect-temp
 
 # Set correct permissions
 RUN chown -R nextjs:nodejs /app
