@@ -1,0 +1,104 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ImageFormat {
+  PNG
+  JPEG
+  WEBP
+}
+
+enum ImageAspectRatio {
+  SQUARE
+  HORIZONTAL
+  VERTICAL
+}
+
+enum ViewType {
+  FRONT
+  SIDE
+  TOP
+  BOTTOM
+}
+
+model Project {
+  id                String           @id @default(cuid())
+  name              String
+  imageFormat       ImageFormat      @default(PNG)
+  imageAspectRatio  ImageAspectRatio @default(SQUARE)
+  referenceImage    String?          // MinIO object key for reference sketch/drawing (deprecated, use ReferenceImage)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  messages          Message[]
+  images            GeneratedImage[]
+  referenceImages   ReferenceImage[]
+  materials         Material[]
+  // Usage tracking
+  totalInputTokens  Int              @default(0)
+  totalOutputTokens Int              @default(0)
+  totalImagesGenerated Int           @default(0)
+  totalCost         Float            @default(0.0)
+  // Custom system prompt for chat
+  customSystemPrompt String?
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  projectId String
+  role       String
+  content    String
+  contentJson Json?   // Structured JSON data for internal processing (optional for backward compatibility)
+  createdAt  DateTime @default(now())
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model GeneratedImage {
+  id        String    @id @default(cuid())
+  projectId String
+  imageData String    // MinIO object key
+  prompt    String
+  viewType  ViewType? // Type of view (FRONT, SIDE, TOP, BOTTOM) or null for regular images
+  viewSetId String?   // UUID to group 4 views together
+  createdAt DateTime  @default(now())
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([viewSetId])
+}
+
+model ReferenceImage {
+  id        String   @id @default(cuid())
+  projectId String
+  imageData String   // MinIO object key
+  name      String?  // Optional name/description
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Material {
+  id        String   @id @default(cuid())
+  name      String
+  prompt    String   // Rich text prompt/description
+  category  String   // "Material", "Type", "Style", etc.
+  imageData String?  // MinIO object key for preview image
+  isGlobal  Boolean  @default(false)
+  projectId String?  // Null for global, set for project-specific
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([isGlobal])
+}
