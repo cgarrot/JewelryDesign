@@ -26,7 +26,8 @@ interface MessageListProps {
 
 // Function to parse @ mentions and return an array of text parts and mention parts
 // Handles material names with spaces like "@Rose Gold"
-function parseMessageContent(content: string) {
+// Matches exactly against the provided materials list
+function parseMessageContent(content: string, materials: Material[] = []) {
   const parts: Array<{ type: 'text' | 'mention'; content: string }> = [];
   let lastIndex = 0;
   let index = 0;
@@ -45,71 +46,39 @@ function parseMessageContent(content: string) {
         });
       }
 
-      // Extract the mention - capture the material name after @
-      // Stop at the first space that's followed by a common word (in, and, or, for, etc.) or punctuation
-      // This handles names like "Rose Gold" (with internal space) but stops before words like "in", "and"
-      let mentionStart = index + 1;
-      let mentionEnd = mentionStart;
+      // Try to match each material name after the @
+      const afterAt = content.slice(index + 1);
       
-      // Common short words that should not be part of material names
-      const stopWords = new Set(['in', 'and', 'or', 'for', 'with', 'to', 'of', 'the', 'a', 'an', 'at', 'on', 'by']);
+      // Find the longest matching material name
+      let bestMatch: { material: Material; length: number } | null = null;
       
-      while (mentionEnd < content.length) {
-        const char = content[mentionEnd];
-        
-        if (char === ' ') {
-          // Found a space - check what comes after
-          let nextWordStart = mentionEnd + 1;
-          let nextWordEnd = nextWordStart;
+      for (const material of materials) {
+        const materialName = material.name;
+        // Check if the text after @ starts with this material name
+        // and is followed by whitespace, newline, or end of string
+        if (afterAt.toLowerCase().startsWith(materialName.toLowerCase())) {
+          const afterMaterial = afterAt.slice(materialName.length);
+          const isWordEnd = afterMaterial.length === 0 || /[\s\n]/.test(afterMaterial[0]);
           
-          // Extract the next word after the space
-          while (nextWordEnd < content.length && /[\w-]/.test(content[nextWordEnd])) {
-            nextWordEnd++;
+          if (isWordEnd && (!bestMatch || materialName.length > bestMatch.length)) {
+            bestMatch = { material, length: materialName.length };
           }
-          
-          const nextWord = content.substring(nextWordStart, nextWordEnd).toLowerCase();
-          
-          // If the next word is a stop word, stop before this space
-          // Otherwise, if it looks like part of a material name (starts with capital or is a word), continue
-          if (stopWords.has(nextWord) || nextWord.length === 0) {
-            // Stop before this space
-            break;
-          }
-          
-          // Check if we've already found a space (for names like "Rose Gold")
-          // If yes, and the next word doesn't look like a material name continuation, stop
-          const hasPreviousSpace = content.substring(mentionStart, mentionEnd).includes(' ');
-          if (hasPreviousSpace && nextWord.length < 3) {
-            // Probably a stop word, stop before this space
-            break;
-          }
-          
-          // This space is part of the material name (e.g., "Rose Gold")
-          mentionEnd++;
-        } else if (/[\w-]/.test(char)) {
-          // Word character, continue
-          mentionEnd++;
-        } else {
-          // Non-word, non-space character (punctuation, etc.) - stop
-          break;
         }
       }
-
-      // Extract the mention name (without @ and without trailing space)
-      const mentionName = content.substring(mentionStart, mentionEnd).trim();
       
-      if (mentionName.length > 0) {
+      if (bestMatch) {
+        // Found a matching material
         parts.push({
           type: 'mention',
-          content: mentionName,
+          content: bestMatch.material.name,
         });
         
-        // Set lastIndex to after the @ symbol and mention name
-        // This preserves any trailing space that was in the original text
-        lastIndex = mentionEnd;
-        index = mentionEnd;
+        // Skip past this mention to avoid duplicate matches
+        // Include the @ symbol and material name
+        lastIndex = index + 1 + bestMatch.length;
+        index = lastIndex;
       } else {
-        // If no valid mention found, skip this @
+        // No matching material found, skip this @
         index++;
       }
     } else {
@@ -282,7 +251,7 @@ export function MessageList({ messages, loading, streamingMessage, onEdit, onDel
           // Use content field for display (same as before)
           // contentJson is available for internal processing but not needed here since
           // we always store the formatted message text in content field
-          const contentParts = parseMessageContent(message.content);
+          const contentParts = parseMessageContent(message.content, materials);
           
           return (
           <div
