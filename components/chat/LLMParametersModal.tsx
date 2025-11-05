@@ -37,6 +37,7 @@ export function LLMParametersModal({
   const [parameters, setParameters] = useState<LLMParameters>({});
   const [loading, setLoading] = useState(false);
   const [isCustom, setIsCustom] = useState(false);
+  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
 
   // Fetch current parameters when modal opens
   useEffect(() => {
@@ -125,8 +126,34 @@ export function LLMParametersModal({
   const handleClose = () => {
     setParameters({});
     setIsCustom(false);
+    setOpenTooltip(null);
     onClose();
   };
+
+  // Close tooltips when clicking outside
+  useEffect(() => {
+    if (!isOpen || openTooltip === null) return;
+
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement;
+      // Check if click is outside tooltip
+      if (!target.closest('[data-info-tooltip]') && !target.closest('svg')) {
+        setOpenTooltip(null);
+      }
+    };
+
+    // Small delay to avoid immediate close
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+      document.addEventListener('touchend', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('touchend', handleClickOutside);
+    };
+  }, [isOpen, openTooltip]);
 
   const updateParameter = (key: keyof LLMParameters, value: string) => {
     const numValue = value === "" ? undefined : parseFloat(value);
@@ -173,9 +200,18 @@ export function LLMParametersModal({
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                 <span>Temperature</span>
                 <span className="ml-2 text-xs text-gray-500">(0.0 - 2.0)</span>
-                <div className="relative group">
-                  <Info className="h-4 w-4 text-gray-400 cursor-help" />
-                  <div className="absolute left-full top-0 ml-2 w-80 max-h-48 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[9999] pointer-events-none">
+                <div className="relative group" data-info-tooltip="temperature">
+                  <Info 
+                    className="h-4 w-4 text-gray-400 cursor-help touch-manipulation" 
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setOpenTooltip(openTooltip === 'temperature' ? null : 'temperature');
+                    }}
+                  />
+                  <div className={`absolute left-full top-0 ml-2 w-80 max-h-48 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl transition-all duration-200 z-[9999] pointer-events-none ${
+                    openTooltip === 'temperature' ? 'opacity-100 visible' : 'opacity-0 invisible md:group-hover:opacity-100 md:group-hover:visible'
+                  }`}>
                     <p className="font-semibold mb-2">
                       Temperature controls response creativity
                     </p>
@@ -221,9 +257,18 @@ export function LLMParametersModal({
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                 <span>Top P (Nucleus Sampling)</span>
                 <span className="ml-2 text-xs text-gray-500">(0.0 - 1.0)</span>
-                <div className="relative group">
-                  <Info className="h-4 w-4 text-gray-400 cursor-help" />
-                  <div className="absolute left-full top-0 ml-2 w-80 max-h-48 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[9999] pointer-events-none">
+                <div className="relative group" data-info-tooltip="topP">
+                  <Info 
+                    className="h-4 w-4 text-gray-400 cursor-help touch-manipulation" 
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setOpenTooltip(openTooltip === 'topP' ? null : 'topP');
+                    }}
+                  />
+                  <div className={`absolute left-full top-0 ml-2 w-80 max-h-48 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl transition-all duration-200 z-[9999] pointer-events-none ${
+                    openTooltip === 'topP' ? 'opacity-100 visible' : 'opacity-0 invisible md:group-hover:opacity-100 md:group-hover:visible'
+                  }`}>
                     <p className="font-semibold mb-2">
                       Top P controls word selection diversity
                     </p>
@@ -268,9 +313,18 @@ export function LLMParametersModal({
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                 <span>Top K</span>
                 <span className="ml-2 text-xs text-gray-500">(1+)</span>
-                <div className="relative group">
-                  <Info className="h-4 w-4 text-gray-400 cursor-help" />
-                  <div className="absolute left-full top-0 ml-2 w-80 max-h-48 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[9999] pointer-events-none">
+                <div className="relative group" data-info-tooltip="topK">
+                  <Info 
+                    className="h-4 w-4 text-gray-400 cursor-help touch-manipulation" 
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setOpenTooltip(openTooltip === 'topK' ? null : 'topK');
+                    }}
+                  />
+                  <div className={`absolute left-full top-0 ml-2 w-80 max-h-48 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl transition-all duration-200 z-[9999] pointer-events-none ${
+                    openTooltip === 'topK' ? 'opacity-100 visible' : 'opacity-0 invisible md:group-hover:opacity-100 md:group-hover:visible'
+                  }`}>
                     <p className="font-semibold mb-2">
                       Top K limits word choice options
                     </p>
@@ -314,9 +368,18 @@ export function LLMParametersModal({
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                 <span>Max Output Tokens</span>
                 <span className="ml-2 text-xs text-gray-500">(1 - 8192)</span>
-                <div className="relative group">
-                  <Info className="h-4 w-4 text-gray-400 cursor-help" />
-                  <div className="absolute left-full top-0 ml-2 -translate-y-1/2 w-80 max-h-64 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[9999] pointer-events-none">
+                <div className="relative group" data-info-tooltip="maxOutputTokens">
+                  <Info 
+                    className="h-4 w-4 text-gray-400 cursor-help touch-manipulation" 
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setOpenTooltip(openTooltip === 'maxOutputTokens' ? null : 'maxOutputTokens');
+                    }}
+                  />
+                  <div className={`absolute left-full top-0 ml-2 -translate-y-1/2 w-80 max-h-64 overflow-y-auto p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl transition-all duration-200 z-[9999] pointer-events-none ${
+                    openTooltip === 'maxOutputTokens' ? 'opacity-100 visible' : 'opacity-0 invisible md:group-hover:opacity-100 md:group-hover:visible'
+                  }`}>
                     <p className="font-semibold mb-2">
                       Max Output Tokens controls response length
                     </p>

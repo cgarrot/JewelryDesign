@@ -112,6 +112,25 @@ export function ReferenceImageManager({
     }
   }, [selectedImageIds, onSelectionChange]);
 
+  // Helper function to parse color descriptions from name field
+  const parseColorDescriptions = (name: string | null | undefined): { colorDescriptions?: Record<string, string>; displayName?: string } | null => {
+    if (!name) return null;
+    try {
+      const parsed = JSON.parse(name);
+      if (parsed.colorDescriptions && typeof parsed.colorDescriptions === 'object') {
+        return {
+          colorDescriptions: parsed.colorDescriptions,
+          displayName: parsed.name || null,
+        };
+      }
+      // If name is not JSON, return as display name
+      return { displayName: name };
+    } catch {
+      // If parsing fails, name is not JSON, return as display name
+      return { displayName: name };
+    }
+  };
+
   // Add paste event listener
   useEffect(() => {
     const handlePasteEvent = (e: ClipboardEvent) => {
@@ -168,6 +187,10 @@ export function ReferenceImageManager({
           <div className="grid grid-cols-3 gap-3">
             {referenceImages.map((image) => {
               const isSelected = selectedImageIds.includes(image.id);
+              const parsedData = parseColorDescriptions(image.name);
+              const colorDescriptions = parsedData?.colorDescriptions;
+              const displayName = parsedData?.displayName;
+              
               return (
                 <div
                   key={image.id}
@@ -180,7 +203,7 @@ export function ReferenceImageManager({
                 >
                   <img
                     src={image.imageUrl}
-                    alt={image.name || 'Reference image'}
+                    alt={displayName || 'Reference image'}
                     className="w-full h-32 object-cover"
                   />
                   
@@ -197,15 +220,43 @@ export function ReferenceImageManager({
                       e.stopPropagation();
                       handleDelete(image.id);
                     }}
-                    className="absolute top-2 left-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-2 left-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 md:group-hover:opacity-100 transition-opacity touch-manipulation"
+                    onTouchStart={(e) => {
+                      // Show button on touch devices
+                      e.stopPropagation();
+                      const target = e.currentTarget as HTMLElement;
+                      target.style.opacity = '1';
+                    }}
+                    onTouchEnd={(e) => {
+                      // Keep visible briefly on touch devices
+                      e.stopPropagation();
+                    }}
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
 
-                  {/* Image Name Overlay */}
-                  {image.name && (
+                  {/* Color Descriptions Overlay */}
+                  {colorDescriptions && Object.keys(colorDescriptions).length > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/70 to-transparent p-2">
+                      <div className="space-y-1">
+                        {Object.entries(colorDescriptions).map(([color, description]) => (
+                          <div key={color} className="flex items-center gap-1.5">
+                            <div
+                              className="w-3 h-3 rounded border border-white/50 flex-shrink-0"
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                            <span className="text-white text-xs leading-tight">{description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Image Name Overlay (only if no color descriptions) */}
+                  {displayName && !colorDescriptions && (
                     <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate">
-                      {image.name}
+                      {displayName}
                     </div>
                   )}
                 </div>

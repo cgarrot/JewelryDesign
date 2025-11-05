@@ -63,6 +63,48 @@ const ReferenceImageManager = dynamic(
   }
 );
 
+/**
+ * Safely parses JSON from a response, handling SSE format (data: {...}) and regular JSON
+ */
+async function parseResponseJson<T = any>(response: Response): Promise<T> {
+  const text = await response.text();
+  let jsonText = text.trim();
+
+  // Handle SSE format (data: {...})
+  if (jsonText.startsWith("data: ")) {
+    jsonText = jsonText.slice(6); // Remove "data: " prefix
+  }
+
+  // Handle multiple SSE lines (take the last complete JSON object)
+  const lines = jsonText.split("\n\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let line = lines[i].trim();
+    if (line.startsWith("data: ")) {
+      line = line.slice(6);
+    }
+    if (line.startsWith("{") || line.startsWith("[")) {
+      try {
+        return JSON.parse(line) as T;
+      } catch {
+        // Try next line
+        continue;
+      }
+    }
+  }
+
+  // Try parsing the whole text as JSON
+  try {
+    return JSON.parse(jsonText) as T;
+  } catch {
+    // Try to extract JSON object from text
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as T;
+    }
+    throw new Error("Failed to parse JSON from response");
+  }
+}
+
 export default function ProjectPage({
   params,
 }: {
@@ -78,6 +120,9 @@ export default function ProjectPage({
     "images"
   );
   const [selectedReferenceImageIds, setSelectedReferenceImageIds] = useState<
+    string[]
+  >([]);
+  const [selectedGeneratedImageIds, setSelectedGeneratedImageIds] = useState<
     string[]
   >([]);
   const [chatCollapsed, setChatCollapsed] = useState(false);
@@ -215,7 +260,18 @@ export default function ProjectPage({
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, message }),
+        body: JSON.stringify({
+          projectId: project.id,
+          message,
+          referenceImageIds:
+            selectedReferenceImageIds.length > 0
+              ? selectedReferenceImageIds
+              : undefined,
+          generatedImageIds:
+            selectedGeneratedImageIds.length > 0
+              ? selectedGeneratedImageIds
+              : undefined,
+        }),
       });
 
       if (!response.ok) {
@@ -367,7 +423,18 @@ export default function ProjectPage({
         const resendResponse = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId: project.id, message: content }),
+          body: JSON.stringify({
+            projectId: project.id,
+            message: content,
+            referenceImageIds:
+              selectedReferenceImageIds.length > 0
+                ? selectedReferenceImageIds
+                : undefined,
+            generatedImageIds:
+              selectedGeneratedImageIds.length > 0
+                ? selectedGeneratedImageIds
+                : undefined,
+          }),
         });
         if (!resendResponse.ok) {
           const data = await resendResponse.json();
@@ -508,13 +575,32 @@ export default function ProjectPage({
             selectedReferenceImageIds.length > 0
               ? selectedReferenceImageIds
               : undefined,
+          generatedImageIds:
+            selectedGeneratedImageIds.length > 0
+              ? selectedGeneratedImageIds
+              : undefined,
         }),
       });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to generate image");
+
+      // Parse response (read body once)
+      let responseData: any = null;
+      try {
+        responseData = await parseResponseJson(response);
+      } catch (parseError) {
+        // If parsing fails, check if it was an error response
+        if (!response.ok) {
+          throw new Error("Failed to generate image");
+        }
+        console.error("Error parsing generate-image response:", parseError);
+        // If parsing fails but response was ok, continue anyway
+        // The image might have been generated successfully
       }
-      await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          (responseData as any)?.error || "Failed to generate image"
+        );
+      }
 
       // Refresh project to get updated images
       await fetchProject();
@@ -612,10 +698,12 @@ export default function ProjectPage({
         }
       );
       if (!refResponse.ok) {
-        const data = await refResponse.json();
-        throw new Error(data.error || "Failed to save annotated image");
+        const data = await parseResponseJson(refResponse);
+        throw new Error(
+          (data as any).error || "Failed to save annotated image"
+        );
       }
-      await refResponse.json();
+      await parseResponseJson(refResponse);
 
       // Send a message to the chat with the annotations
       const message = `I've annotated the generated image with the following modifications: ${annotations}. Please generate a new version incorporating these changes.`;
@@ -626,11 +714,53 @@ export default function ProjectPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, message }),
       });
+
+      // Check content type before reading body
+      const contentType = chatResponse.headers.get("content-type");
+
       if (!chatResponse.ok) {
-        const data = await chatResponse.json();
-        throw new Error(data.error || "Failed to send message");
+        // Handle error response - try to parse as JSON if not streaming
+        if (!contentType?.includes("text/event-stream")) {
+          try {
+            const data = await parseResponseJson(chatResponse);
+            throw new Error((data as any).error || "Failed to send message");
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message !== "Failed to parse JSON from response"
+            ) {
+              throw error;
+            }
+            throw new Error("Failed to send message");
+          }
+        } else {
+          // For streaming errors, just consume and throw generic error
+          const reader = chatResponse.body?.getReader();
+          if (reader) {
+            while (true) {
+              const { done } = await reader.read();
+              if (done) break;
+            }
+          }
+          throw new Error("Failed to send message");
+        }
       }
-      await chatResponse.json();
+
+      // Chat API returns streaming response, but we don't need to parse it
+      // Just consume the stream to prevent errors
+      if (contentType?.includes("text/event-stream")) {
+        // Consume the stream
+        const reader = chatResponse.body?.getReader();
+        if (reader) {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        }
+      } else {
+        // Non-streaming response - parse it
+        await parseResponseJson(chatResponse);
+      }
 
       // Refresh project
       await fetchProject();
@@ -645,11 +775,26 @@ export default function ProjectPage({
           prompt: `Based on the annotated image and these modifications: ${annotations}`,
         }),
       });
-      if (!imageResponse.ok) {
-        const data = await imageResponse.json();
-        throw new Error(data.error || "Failed to generate image");
+
+      // Parse response (read body once)
+      let responseData: any = null;
+      try {
+        responseData = await parseResponseJson(imageResponse);
+      } catch (parseError) {
+        // If parsing fails, check if it was an error response
+        if (!imageResponse.ok) {
+          throw new Error("Failed to generate image");
+        }
+        console.error("Error parsing generate-image response:", parseError);
+        // If parsing fails but response was ok, continue anyway
+        // The image might have been generated successfully
       }
-      await imageResponse.json();
+
+      if (!imageResponse.ok) {
+        throw new Error(
+          (responseData as any)?.error || "Failed to generate image"
+        );
+      }
 
       // Final refresh
       await fetchProject();
@@ -853,20 +998,6 @@ export default function ProjectPage({
               onClick={() => setIsMobileChatOpen(false)}
             />
             <div className="fixed inset-y-0 left-0 right-0 md:hidden z-50 flex flex-col bg-white">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Design Chat
-                </h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsMobileChatOpen(false)}
-                  className="h-9 w-9 p-0"
-                  title="Close chat"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
               <div className="flex-1 overflow-hidden">
                 <ChatSidebar
                   messages={project.messages || []}
@@ -881,6 +1012,24 @@ export default function ProjectPage({
                   editingMessage={editingMessage}
                   onEditCancel={handleCancelEdit}
                   onEditSubmit={handleEditSubmit}
+                  onClose={() => setIsMobileChatOpen(false)}
+                  isMobile={true}
+                  selectedReferenceImages={(
+                    project.referenceImages || []
+                  ).filter((img) => selectedReferenceImageIds.includes(img.id))}
+                  onReferenceImageDeselect={(imageId) => {
+                    setSelectedReferenceImageIds((prev) =>
+                      prev.filter((id) => id !== imageId)
+                    );
+                  }}
+                  selectedGeneratedImages={(project.images || []).filter(
+                    (img) => selectedGeneratedImageIds.includes(img.id)
+                  )}
+                  onGeneratedImageDeselect={(imageId) => {
+                    setSelectedGeneratedImageIds((prev) =>
+                      prev.filter((id) => id !== imageId)
+                    );
+                  }}
                 />
               </div>
             </div>
@@ -919,6 +1068,22 @@ export default function ProjectPage({
               editingMessage={editingMessage}
               onEditCancel={handleCancelEdit}
               onEditSubmit={handleEditSubmit}
+              selectedReferenceImages={(project.referenceImages || []).filter(
+                (img) => selectedReferenceImageIds.includes(img.id)
+              )}
+              onReferenceImageDeselect={(imageId) => {
+                setSelectedReferenceImageIds((prev) =>
+                  prev.filter((id) => id !== imageId)
+                );
+              }}
+              selectedGeneratedImages={(project.images || []).filter((img) =>
+                selectedGeneratedImageIds.includes(img.id)
+              )}
+              onGeneratedImageDeselect={(imageId) => {
+                setSelectedGeneratedImageIds((prev) =>
+                  prev.filter((id) => id !== imageId)
+                );
+              }}
             />
             {/* Resize handle - hidden on mobile */}
             <div
@@ -1022,6 +1187,8 @@ export default function ProjectPage({
                   !project.messages ||
                   project.messages.length === 0
                 }
+                selectedImageIds={selectedGeneratedImageIds}
+                onSelectionChange={setSelectedGeneratedImageIds}
               />
             )}
             {activeTab === "views" && (

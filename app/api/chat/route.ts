@@ -14,10 +14,13 @@ import { z } from "zod";
 import { calculateTotalCost } from "@/lib/pricing";
 import { parseChatResponseJson, parseImageDecisionJson } from "@/lib/utils";
 import type { ChatResponseJson } from "@/lib/types";
+import { getImageBuffer } from "@/lib/minio";
 
 const chatSchema = z.object({
   projectId: z.string().min(1, "Project ID is required"),
   message: z.string().min(1, "Message is required"),
+  referenceImageIds: z.array(z.string()).optional(),
+  generatedImageIds: z.array(z.string()).optional(),
 });
 
 async function determineIfShouldGenerateImage(
@@ -134,14 +137,26 @@ function sendSSE(controller: ReadableStreamDefaultController, data: any) {
 
 export const POST = async (request: NextRequest) => {
   try {
-    const { projectId, message } = await validateRequestBody(
+    const { projectId, message, referenceImageIds, generatedImageIds } = await validateRequestBody(
       request,
       chatSchema
     );
 
-    // Verify project exists and get custom system prompt
+    // Verify project exists and get custom system prompt with images
     const project = await prisma.project.findUnique({
       where: { id: projectId },
+      include: {
+        referenceImages: {
+          where: referenceImageIds && referenceImageIds.length > 0
+            ? { id: { in: referenceImageIds } }
+            : undefined,
+        },
+        images: {
+          where: generatedImageIds && generatedImageIds.length > 0
+            ? { id: { in: generatedImageIds } }
+            : undefined,
+        },
+      },
     });
     if (!project) {
       throw new NotFoundError("Project", projectId);
@@ -252,22 +267,69 @@ The "message" field should contain the exact same formatted markdown text you wo
     // Parse and use LLM parameters from project if available
     const generationConfig = parseGenerationConfig(project.llmParameters);
 
+    // Prepare image parts for Gemini API
+    const imageParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    
+    // Add reference images (up to 4 images supported by Gemini API)
+    const selectedReferenceImages = project.referenceImages || [];
+    for (const refImage of selectedReferenceImages.slice(0, 4)) {
+      try {
+        const imageBuffer = await getImageBuffer(refImage.imageData);
+        const base64Data = imageBuffer.toString('base64');
+        imageParts.push({
+          inlineData: {
+            mimeType: 'image/png',
+            data: base64Data,
+          },
+        });
+      } catch (error) {
+        logError(error, 'chat-load-reference-image');
+        // Continue with other images even if one fails
+      }
+    }
+    
+    // Add generated images (up to 4 total images with reference images)
+    const selectedGeneratedImages = project.images || [];
+    const remainingSlots = 4 - imageParts.length;
+    for (const genImage of selectedGeneratedImages.slice(0, remainingSlots)) {
+      try {
+        const imageBuffer = await getImageBuffer(genImage.imageData);
+        const base64Data = imageBuffer.toString('base64');
+        imageParts.push({
+          inlineData: {
+            mimeType: 'image/png',
+            data: base64Data,
+          },
+        });
+      } catch (error) {
+        logError(error, 'chat-load-generated-image');
+        // Continue with other images even if one fails
+      }
+    }
+
     // Create a streaming response
     const stream = new ReadableStream({
       async start(controller) {
         try {
           // Call Gemini API with streaming
           const model = getChatModel(generationConfig);
+          
+          // Build parts array with text and images
+          const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+            {
+              text: `${systemPrompt}\n\nConversation:\n${conversationHistory}`,
+            },
+          ];
+          
+          // Add image parts if any
+          parts.push(...imageParts);
+          
           // generateContentStream is async, so we need to await it
           const streamingResult = await model.generateContentStream({
             contents: [
               {
                 role: "user",
-                parts: [
-                  {
-                    text: `${systemPrompt}\n\nConversation:\n${conversationHistory}`,
-                  },
-                ],
+                parts: parts as any, // Type assertion needed due to Gemini API type definitions
               },
             ],
           });

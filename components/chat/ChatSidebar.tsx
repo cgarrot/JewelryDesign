@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Sliders, Copy } from 'lucide-react';
+import { Settings, Sliders, Copy, X } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { SystemPromptModal } from './SystemPromptModal';
 import { LLMParametersModal } from './LLMParametersModal';
 import { Button } from '@/components/ui/button';
 import { toastSuccess, toastError } from '@/lib/toast';
-import { Message } from '@/lib/types';
+import { Message, ReferenceImage, GeneratedImage } from '@/lib/types';
 
 interface StreamingMessage {
   id: string;
@@ -29,6 +29,12 @@ interface ChatSidebarProps {
   editingMessage?: { id: string; content: string } | null;
   onEditCancel?: () => void;
   onEditSubmit?: (messageId: string, content: string) => void;
+  onClose?: () => void;
+  isMobile?: boolean;
+  selectedReferenceImages?: ReferenceImage[];
+  onReferenceImageDeselect?: (imageId: string) => void;
+  selectedGeneratedImages?: GeneratedImage[];
+  onGeneratedImageDeselect?: (imageId: string) => void;
 }
 
 export function ChatSidebar({ 
@@ -44,6 +50,12 @@ export function ChatSidebar({
   editingMessage,
   onEditCancel,
   onEditSubmit,
+  onClose,
+  isMobile = false,
+  selectedReferenceImages = [],
+  onReferenceImageDeselect,
+  selectedGeneratedImages = [],
+  onGeneratedImageDeselect,
 }: ChatSidebarProps) {
   const [isSystemPromptModalOpen, setIsSystemPromptModalOpen] = useState(false);
   const [isLLMParametersModalOpen, setIsLLMParametersModalOpen] = useState(false);
@@ -117,12 +129,32 @@ export function ChatSidebar({
       document.body.style.userSelect = '';
     };
 
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isResizingRef.current || !inputContainerRef.current) return;
+      e.preventDefault(); // Prevent scrolling while resizing
+
+      const touch = e.touches[0];
+      const deltaY = startYRef.current - touch.clientY; // Positive when dragging up
+      const newHeight = Math.max(80, Math.min(400, startHeightRef.current + deltaY));
+      setInputHeight(newHeight);
+    };
+
+    const handleTouchEnd = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [inputHeight]);
 
@@ -136,6 +168,19 @@ export function ChatSidebar({
     startHeightRef.current = currentHeight;
     
     document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (!inputContainerRef.current) return;
+    
+    isResizingRef.current = true;
+    const touch = e.touches[0];
+    startYRef.current = touch.clientY;
+    const currentHeight = inputHeight || inputContainerRef.current.offsetHeight;
+    startHeightRef.current = currentHeight;
+    
     document.body.style.userSelect = 'none';
   };
 
@@ -253,6 +298,17 @@ export function ChatSidebar({
             </div>
             <p className="text-xs sm:text-sm text-gray-600">Describe your jewelry piece</p>
           </div>
+          {isMobile && onClose && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="h-9 w-9 sm:h-10 sm:w-10 p-0 flex-shrink-0"
+              title="Close chat"
+            >
+              <X className="h-4 w-4 sm:h-5 sm:w-5" />
+            </Button>
+          )}
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -263,6 +319,7 @@ export function ChatSidebar({
           onEdit={onEditMessage}
           onDelete={onDeleteMessage}
           onCopy={onCopyMessage}
+          projectId={projectId}
         />
       </div>
       <div 
@@ -272,8 +329,10 @@ export function ChatSidebar({
       >
         <div
           onMouseDown={handleResizeStart}
-          className="absolute top-0 left-0 right-0 h-3 cursor-ns-resize hover:bg-blue-200/30 transition-colors z-10 group flex items-center justify-center"
+          onTouchStart={handleTouchStart}
+          className="absolute top-0 left-0 right-0 h-3 cursor-ns-resize hover:bg-blue-200/30 active:bg-blue-200/50 touch-manipulation transition-colors z-10 group flex items-center justify-center"
           title="Drag to resize input area"
+          style={{ touchAction: 'none' }}
         >
           <div className="w-20 h-1 bg-gray-300 rounded-full group-hover:bg-blue-500 transition-colors" />
         </div>
@@ -285,6 +344,10 @@ export function ChatSidebar({
           editingMessage={editingMessage}
           onEditCancel={onEditCancel}
           onEditSubmit={onEditSubmit}
+          selectedReferenceImages={selectedReferenceImages}
+          onReferenceImageDeselect={onReferenceImageDeselect}
+          selectedGeneratedImages={selectedGeneratedImages}
+          onGeneratedImageDeselect={onGeneratedImageDeselect}
         />
       </div>
       {projectId && (

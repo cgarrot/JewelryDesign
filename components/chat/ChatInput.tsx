@@ -5,7 +5,7 @@ import { Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { MaterialAutocomplete } from './MaterialAutocomplete';
-import { Material } from '@/lib/types';
+import { Material, ReferenceImage, GeneratedImage } from '@/lib/types';
 
 interface EditingMessage {
   id: string;
@@ -20,6 +20,10 @@ interface ChatInputProps {
   editingMessage?: EditingMessage | null;
   onEditCancel?: () => void;
   onEditSubmit?: (messageId: string, content: string) => void;
+  selectedReferenceImages?: ReferenceImage[];
+  onReferenceImageDeselect?: (imageId: string) => void;
+  selectedGeneratedImages?: GeneratedImage[];
+  onGeneratedImageDeselect?: (imageId: string) => void;
 }
 
 export function ChatInput({ 
@@ -30,6 +34,10 @@ export function ChatInput({
   editingMessage,
   onEditCancel,
   onEditSubmit,
+  selectedReferenceImages = [],
+  onReferenceImageDeselect,
+  selectedGeneratedImages = [],
+  onGeneratedImageDeselect,
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -159,31 +167,44 @@ export function ChatInput({
 
   // Parse message to extract mentions - only return exact matches with materials
   const extractMentions = (text: string): string[] => {
-    const regex = /@(\w+)/g;
     const mentions: string[] = [];
-    let match;
+    let index = 0;
     
-    while ((match = regex.exec(text)) !== null) {
-      const mentionName = match[1];
-      // Only include if it's a complete word (not part of a longer word) 
-      // and matches an existing material exactly
-      const isCompleteWord = 
-        match.index === 0 || 
-        /[\s@]/.test(text[match.index - 1]);
+    // Find all @ symbols in the text
+    while ((index = text.indexOf('@', index)) !== -1) {
+      // Check if @ is at start or preceded by whitespace/@
+      const isCompleteWord = index === 0 || /[\s@]/.test(text[index - 1]);
       
-      const afterMatch = text[match.index + match[0].length];
-      const isWordEnd = 
-        afterMatch === undefined || 
-        /[\s\n]/.test(afterMatch);
-      
-      if (isCompleteWord && isWordEnd) {
-        // Check if this mention exactly matches a material name
-        const material = materials.find((m) => 
-          m.name.toLowerCase() === mentionName.toLowerCase()
-        );
-        if (material) {
-          mentions.push(material.name); // Use the exact material name (with correct casing)
+      if (isCompleteWord) {
+        // Try to match each material name after the @
+        const afterAt = text.slice(index + 1);
+        
+        // Find the longest matching material name
+        let bestMatch: { material: Material; length: number } | null = null;
+        
+        for (const material of materials) {
+          const materialName = material.name;
+          // Check if the text after @ starts with this material name
+          // and is followed by whitespace, newline, or end of string
+          if (afterAt.toLowerCase().startsWith(materialName.toLowerCase())) {
+            const afterMaterial = afterAt.slice(materialName.length);
+            const isWordEnd = afterMaterial.length === 0 || /[\s\n]/.test(afterMaterial[0]);
+            
+            if (isWordEnd && (!bestMatch || materialName.length > bestMatch.length)) {
+              bestMatch = { material, length: materialName.length };
+            }
+          }
         }
+        
+        if (bestMatch) {
+          mentions.push(bestMatch.material.name);
+          // Skip past this mention to avoid duplicate matches
+          index += 1 + bestMatch.length;
+        } else {
+          index += 1;
+        }
+      } else {
+        index += 1;
       }
     }
     
@@ -201,22 +222,50 @@ export function ChatInput({
     
     if (lastAtIndex !== -1) {
       const afterAt = beforeCursor.slice(lastAtIndex + 1);
-      const hasSpace = afterAt.includes(' ') || afterAt.includes('\n');
+      const hasNewline = afterAt.includes('\n');
       
-      if (!hasSpace) {
-        // Show autocomplete
-        setMentionStartIndex(lastAtIndex);
-        setAutocompleteQuery(afterAt);
-        setShowAutocomplete(true);
-        setSelectedMaterialIndex(0);
+      // Allow spaces in autocomplete query (for material names with spaces)
+      // Only close if there's a newline or if the query doesn't match any material prefix
+      if (!hasNewline) {
+        // Check if any material name starts with the current query (case-insensitive)
+        const queryLower = afterAt.toLowerCase().trimEnd(); // Remove trailing spaces for matching
+        const hasMatchingMaterial = materials.some((m) => 
+          m.name.toLowerCase().startsWith(queryLower)
+        );
         
-        // Calculate position for autocomplete
-        if (textareaRef.current) {
-          const rect = textareaRef.current.getBoundingClientRect();
-          setAutocompletePosition({
-            top: rect.bottom + 4,
-            left: rect.left,
-          });
+        // Check if we've completed a material name exactly (query ends with space or matches exactly)
+        const isCompleteMaterial = materials.some((m) => {
+          const nameLower = m.name.toLowerCase();
+          const afterAtLower = afterAt.toLowerCase();
+          // Check if query exactly matches a material name (possibly with trailing space)
+          if (afterAtLower === nameLower || afterAtLower === nameLower + ' ') {
+            return true;
+          }
+          // Also check if query starts with a material name and is followed by space
+          if (afterAtLower.startsWith(nameLower)) {
+            const afterName = afterAt.slice(nameLower.length);
+            return afterName.length > 0 && /^\s/.test(afterName);
+          }
+          return false;
+        });
+        
+        // Show autocomplete if there's a potential match and we haven't completed a material
+        if (hasMatchingMaterial && !isCompleteMaterial) {
+          setMentionStartIndex(lastAtIndex);
+          setAutocompleteQuery(afterAt);
+          setShowAutocomplete(true);
+          setSelectedMaterialIndex(0);
+          
+          // Calculate position for autocomplete
+          if (textareaRef.current) {
+            const rect = textareaRef.current.getBoundingClientRect();
+            setAutocompletePosition({
+              top: rect.bottom + 4,
+              left: rect.left,
+            });
+          }
+        } else {
+          setShowAutocomplete(false);
         }
       } else {
         setShowAutocomplete(false);
@@ -325,7 +374,7 @@ export function ChatInput({
       
       <div className="flex flex-col gap-2 flex-1 min-h-0">
         {!isEditing && (
-          <div className="flex items-center gap-1.5 mb-1 flex-shrink-0">
+          <div className="flex items-center gap-2 mb-1 flex-shrink-0 flex-wrap">
             <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-900">
               <input
                 type="checkbox"
@@ -340,6 +389,72 @@ export function ChatInput({
               />
               <span className="select-none text-xs sm:text-xs">Auto-regenerate</span>
             </label>
+            {selectedReferenceImages.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Reference:</span>
+                <div className="flex items-center gap-1.5">
+                  {selectedReferenceImages.map((image) => (
+                    <div
+                      key={image.id}
+                      className="relative group"
+                      title={image.name || 'Reference image'}
+                    >
+                      <img
+                        src={image.imageUrl || `/api/images/${image.imageData}`}
+                        alt={image.name || 'Reference'}
+                        className="w-8 h-8 rounded border-2 border-blue-500 object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => onReferenceImageDeselect?.(image.id)}
+                      />
+                      <button
+                        onClick={() => onReferenceImageDeselect?.(image.id)}
+                        className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-full p-0.5 opacity-0 md:group-hover:opacity-100 transition-opacity touch-manipulation"
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          const target = e.currentTarget as HTMLElement;
+                          target.style.opacity = '1';
+                        }}
+                        title="Deselect"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedGeneratedImages.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Preview:</span>
+                <div className="flex items-center gap-1.5">
+                  {selectedGeneratedImages.map((image) => (
+                    <div
+                      key={image.id}
+                      className="relative group"
+                      title="Generated jewelry preview"
+                    >
+                      <img
+                        src={image.imageData}
+                        alt="Preview"
+                        className="w-8 h-8 rounded border-2 border-purple-500 object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => onGeneratedImageDeselect?.(image.id)}
+                      />
+                      <button
+                        onClick={() => onGeneratedImageDeselect?.(image.id)}
+                        className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-full p-0.5 opacity-0 md:group-hover:opacity-100 transition-opacity touch-manipulation"
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          const target = e.currentTarget as HTMLElement;
+                          target.style.opacity = '1';
+                        }}
+                        title="Deselect"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         <div className="flex gap-2 flex-1 min-h-0">

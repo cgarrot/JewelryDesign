@@ -14,16 +14,23 @@ const generateImageSchema = z.object({
   projectId: z.string().min(1, 'Project ID is required'),
   prompt: z.string().min(1, 'Prompt is required'),
   referenceImageIds: z.array(z.string()).optional(),
+  generatedImageIds: z.array(z.string()).optional(),
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const { projectId, prompt, referenceImageIds } = await validateRequestBody(request, generateImageSchema);
+  const { projectId, prompt, referenceImageIds, generatedImageIds } = await validateRequestBody(request, generateImageSchema);
 
-  // Get project with reference images
+  // Get project with reference images and generated images
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
       referenceImages: {
+        orderBy: { createdAt: 'desc' },
+      },
+      images: {
+        where: generatedImageIds && generatedImageIds.length > 0
+          ? { id: { in: generatedImageIds } }
+          : undefined,
         orderBy: { createdAt: 'desc' },
       },
     },
@@ -271,6 +278,26 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       });
     } catch (error) {
       logError(error, 'generate-image load reference');
+      // Continue with other images even if one fails
+    }
+  }
+  
+  // Add generated images (up to 4 total images with reference images)
+  const selectedGeneratedImages = project.images || [];
+  const remainingSlots = 4 - parts.filter(p => 'inlineData' in p).length;
+  for (const genImage of selectedGeneratedImages.slice(0, remainingSlots)) {
+    try {
+      const imageBuffer = await getImageBuffer(genImage.imageData);
+      const base64Data = imageBuffer.toString('base64');
+      
+      parts.push({
+        inlineData: {
+          mimeType: 'image/png',
+          data: base64Data,
+        },
+      });
+    } catch (error) {
+      logError(error, 'generate-image load generated');
       // Continue with other images even if one fails
     }
   }

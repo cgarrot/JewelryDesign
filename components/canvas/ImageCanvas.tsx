@@ -9,6 +9,7 @@ import {
   Undo as UndoIcon,
   GitCompare,
   Trash2,
+  Check,
 } from "lucide-react";
 import { ImageControls } from "./ImageControls";
 import { ImageComparison } from "./ImageComparison";
@@ -27,6 +28,8 @@ interface ImageCanvasProps {
   ) => void;
   loading?: boolean;
   disabled?: boolean;
+  selectedImageIds?: string[];
+  onSelectionChange?: (selectedIds: string[]) => void;
 }
 
 export function ImageCanvas({
@@ -35,6 +38,8 @@ export function ImageCanvas({
   onSaveAnnotatedImage,
   loading,
   disabled,
+  selectedImageIds = [],
+  onSelectionChange,
 }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -49,6 +54,16 @@ export function ImageCanvas({
   const [colorDescriptions, setColorDescriptions] = useState<
     Record<string, string>
   >({});
+
+  const toggleImageSelection = useCallback((imageId: string) => {
+    if (!onSelectionChange) return;
+    const isSelected = selectedImageIds.includes(imageId);
+    if (isSelected) {
+      onSelectionChange(selectedImageIds.filter((id) => id !== imageId));
+    } else {
+      onSelectionChange([...selectedImageIds, imageId]);
+    }
+  }, [selectedImageIds, onSelectionChange]);
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const usedColorsRef = useRef<Set<string>>(new Set());
@@ -500,7 +515,7 @@ export function ImageCanvas({
             {isEditing ? (
               <div className="bg-white rounded-lg shadow-lg overflow-hidden p-3 sm:p-4">
                 {/* Annotation Toolbar */}
-                <div className="flex items-center gap-1 sm:gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b overflow-x-auto">
+                <div className="flex items-center gap-1 sm:gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b relative z-50">
                   <Button variant="default" size="sm" className="h-9 sm:h-10 px-2 sm:px-3 flex-shrink-0">
                     <Pencil className="h-4 w-4 sm:mr-1" />
                     <span className="hidden sm:inline">Pen</span>
@@ -632,12 +647,43 @@ export function ImageCanvas({
               </div>
             ) : (
               <>
+                <div className="relative group">
                 <div className="bg-white rounded-lg shadow-lg overflow-hidden">
                   <img
                     src={selectedImage.imageData}
                     alt="Generated jewelry"
                     className="w-full h-auto object-contain"
                   />
+                  </div>
+                  {onSelectionChange && (
+                    <>
+                      <button
+                        onClick={() => toggleImageSelection(selectedImage.id)}
+                        className={`absolute top-2 right-2 rounded-full p-1.5 transition-all touch-manipulation ${
+                          selectedImageIds.includes(selectedImage.id)
+                            ? "bg-blue-500 text-white opacity-100"
+                            : "bg-white/80 text-gray-600 opacity-0 md:group-hover:opacity-100"
+                        }`}
+                        onTouchStart={(e) => {
+                          // Show button on touch devices
+                          const target = e.currentTarget as HTMLElement;
+                          if (!selectedImageIds.includes(selectedImage.id)) {
+                            target.style.opacity = '1';
+                          }
+                        }}
+                        title={
+                          selectedImageIds.includes(selectedImage.id)
+                            ? "Deselect from chat"
+                            : "Select for chat"
+                        }
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                      {selectedImageIds.includes(selectedImage.id) && (
+                        <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
+                      )}
+                    </>
+                  )}
                 </div>
                 {regularImages.length > 1 && (
                   <div className="space-y-2">
@@ -645,9 +691,14 @@ export function ImageCanvas({
                       All Designs
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {regularImages.slice(0, 9).map((image, index) => (
+                      {regularImages.slice(0, 9).map((image, index) => {
+                        const isSelected = selectedImageIds.includes(image.id);
+                        return (
                         <div
                           key={image.id}
+                            className="relative group"
+                          >
+                            <div
                           onClick={() => setSelectedImageIndex(index)}
                           className={`bg-white rounded-lg overflow-hidden shadow cursor-pointer hover:shadow-md transition-all ${
                             index === selectedImageIndex
@@ -665,7 +716,38 @@ export function ImageCanvas({
                             className="w-full h-20 sm:h-24 object-cover"
                           />
                         </div>
-                      ))}
+                            {onSelectionChange && (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleImageSelection(image.id);
+                                  }}
+                                  className={`absolute top-2 right-2 rounded-full p-1 transition-all touch-manipulation ${
+                                    isSelected
+                                      ? "bg-blue-500 text-white opacity-100"
+                                      : "bg-white/80 text-gray-600 opacity-0 md:group-hover:opacity-100"
+                                  }`}
+                                  onTouchStart={(e) => {
+                                    // Show button on touch devices
+                                    e.stopPropagation();
+                                    const target = e.currentTarget as HTMLElement;
+                                    if (!isSelected) {
+                                      target.style.opacity = '1';
+                                    }
+                                  }}
+                                  title={isSelected ? "Deselect" : "Select for chat"}
+                                >
+                                  <Check className="h-3 w-3" />
+                                </button>
+                                {isSelected && (
+                                  <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     {regularImages.length > 9 && (
                       <p className="text-xs text-gray-500 text-center">
