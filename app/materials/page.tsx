@@ -6,7 +6,7 @@ import { MaterialsList } from '@/components/materials/MaterialsList';
 import { MaterialEditor } from '@/components/materials/MaterialEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Gem, Plus, Search, Sparkles, Grid3x3, List, LayoutGrid } from 'lucide-react';
+import { Plus, Search, Sparkles, Grid3x3, List, LayoutGrid, ChevronRight, Home } from 'lucide-react';
 import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { DisplayMode } from '@/components/materials/MaterialsList';
@@ -201,7 +201,7 @@ export default function MaterialsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <Gem className="h-12 w-12 mx-auto mb-4 text-gray-400 animate-pulse" />
+          <Sparkles className="h-12 w-12 mx-auto mb-4 animate-pulse" style={{ stroke: 'url(#sparklesGradient)' }} />
           <p className="text-gray-600">Loading materials...</p>
         </div>
       </div>
@@ -211,13 +211,32 @@ export default function MaterialsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Breadcrumb Navigation */}
+        <nav className="mb-6" aria-label="Breadcrumb">
+          <ol className="flex items-center gap-2.5 text-sm">
+            <li>
+              <Link
+                href="/"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200 group"
+              >
+                <Home className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                <span className="font-medium">Dashboard</span>
+              </Link>
+            </li>
+            <li>
+              <ChevronRight className="h-4 w-4 text-gray-300" />
+            </li>
+            <li className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-gray-200 shadow-sm">
+              <Sparkles className="h-4 w-4" style={{ stroke: 'url(#sparklesGradient)' }} />
+              <span className="text-gray-900 font-semibold">Materials Library</span>
+            </li>
+          </ol>
+        </nav>
+
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <Link href="/">
-                <Gem className="h-8 w-8 text-gray-900 hover:text-gray-700 cursor-pointer" />
-              </Link>
               <h1 className="text-3xl font-bold text-gray-900">Materials Library</h1>
             </div>
             <Button onClick={handleCreateMaterial}>
@@ -321,7 +340,7 @@ export default function MaterialsPage() {
                   variant="outline"
                   size="sm"
                 >
-                  <Sparkles className="h-4 w-4 mr-2" />
+                  <Sparkles className="h-4 w-4 mr-2" style={{ stroke: 'url(#sparklesGradient)' }} />
                   {generatingAllPreviews
                     ? 'Generating...'
                     : `Generate All Previews (${materialsWithoutImages.length})`}

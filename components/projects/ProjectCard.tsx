@@ -3,7 +3,7 @@
 import { formatDistanceToNow } from 'date-fns';
 import { MessageSquare, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { PriceDisplay } from '@/components/ui/PriceDisplay';
+import { formatCost } from '@/lib/pricing';
 
 interface ProjectCardProps {
   project: {
@@ -19,6 +19,7 @@ interface ProjectCardProps {
       messages: number;
       images: number;
     };
+    lastImageUrl?: string | null;
   };
   onDelete: (id: string) => void;
   onClick: (id: string) => void;
@@ -32,49 +33,76 @@ export function ProjectCard({ project, onDelete, onClick }: ProjectCardProps) {
     }
   };
 
+  const hasImage = project.lastImageUrl;
+
   return (
     <div
       onClick={() => onClick(project.id)}
-      className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+      className="relative group rounded-xl overflow-hidden bg-gray-100 hover:shadow-xl hover:scale-[1.02] hover:ring-2 hover:ring-white/50 transition-all duration-300 cursor-pointer h-64"
     >
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="font-semibold text-lg">{project.name}</h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleDelete}
-          className="h-8 w-8 p-0"
-        >
-          <Trash2 className="h-4 w-4 text-red-600" />
-        </Button>
-      </div>
-      
-      <div className="flex gap-4 text-sm text-gray-600 mb-2">
-        <div className="flex items-center gap-1">
-          <MessageSquare className="h-4 w-4" />
-          <span>{project._count?.messages || 0} messages</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <ImageIcon className="h-4 w-4" />
-          <span>{project._count?.images || 0} images</span>
-        </div>
-      </div>
-      
-      {project.totalCost !== undefined && (
-        <div className="mb-2">
-          <PriceDisplay
-            totalCost={project.totalCost || 0}
-            totalInputTokens={project.totalInputTokens || 0}
-            totalOutputTokens={project.totalOutputTokens || 0}
-            totalImagesGenerated={project.totalImagesGenerated || 0}
-            compact
-          />
-        </div>
+      {/* Background image with zoom effect on hover */}
+      {hasImage && (
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110"
+          style={{
+            backgroundImage: `url(${project.lastImageUrl})`,
+          }}
+        />
       )}
       
-      <p className="text-xs text-gray-500">
-        Updated {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true })}
-      </p>
+      {/* Hover overlay for better feedback */}
+      {hasImage && (
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all duration-300 z-[1]" />
+      )}
+      
+      {/* Delete button - top right */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={handleDelete}
+        className="absolute top-2 right-2 h-8 w-8 p-0 bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+
+      {/* Text at bottom with backdrop blur - becomes transparent on hover */}
+      <div className="absolute inset-x-0 bottom-0 px-4 py-3 z-[2]">
+        <div className="backdrop-blur-sm bg-black/20 group-hover:backdrop-blur-0 group-hover:bg-transparent rounded-lg px-3 py-2 transition-all duration-300">
+          <h3 className="font-semibold text-base text-white mb-1.5 line-clamp-1 drop-shadow-lg">
+            {project.name}
+          </h3>
+          
+          <div className="flex items-center gap-3 text-xs text-white drop-shadow-md mb-1">
+            <div className="flex items-center gap-1">
+              <MessageSquare className="h-3 w-3" />
+              <span>{project._count?.messages || 0}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <ImageIcon className="h-3 w-3" />
+              <span>{project._count?.images || 0}</span>
+            </div>
+            {project.totalCost !== undefined && project.totalCost > 0 && (
+              <span className="text-white/90 ml-1">
+                {formatCost(project.totalCost || 0)}
+              </span>
+            )}
+          </div>
+          
+          <p className="text-xs text-white/90 drop-shadow-md">
+            {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true })}
+          </p>
+        </div>
+      </div>
+
+      {/* Fallback for no image */}
+      {!hasImage && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 z-[1]">
+          <div className="text-center">
+            <ImageIcon className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm text-gray-500 font-medium">{project.name}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

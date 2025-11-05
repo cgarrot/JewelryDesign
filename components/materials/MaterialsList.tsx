@@ -176,85 +176,106 @@ export function MaterialsList({
   // Default Grid View - Full card with all details
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {filteredMaterials.map((material) => (
-        <div
-          key={material.id}
-          className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden"
-        >
-            {/* Preview Image */}
-            <div className="aspect-video bg-gray-100 relative overflow-hidden">
-              {material.imageUrl ? (
-                <img
-                  src={material.imageUrl}
-                  alt={material.name}
-                  className="w-full h-full object-cover"
-                  style={{ minHeight: '150px', display: 'block' }}
-                  onError={(e) => {
-                    // Hide broken images
-                    e.currentTarget.style.display = 'none';
-                  }}
-                  key={material.imageUrl} // Force re-render when URL changes
+      {filteredMaterials.map((material) => {
+        const hasImage = material.imageUrl;
+        const isGenerating = currentGeneratingMaterial === material.name;
+
+        return (
+          <div
+            key={material.id}
+            className="relative group rounded-xl overflow-hidden bg-gray-100 hover:shadow-xl hover:scale-[1.02] hover:ring-2 hover:ring-white/50 transition-all duration-300 cursor-pointer h-64"
+            onClick={() => onEdit(material)}
+          >
+            {/* Background image with zoom effect on hover */}
+            {hasImage && (
+              <div
+                className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110"
+                style={{
+                  backgroundImage: `url(${material.imageUrl})`,
+                }}
+              />
+            )}
+            
+            {/* Hover overlay for better feedback */}
+            {hasImage && (
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all duration-300 z-[1]" />
+            )}
+            
+            {/* Global badge */}
+            {material.isGlobal && (
+              <span className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded z-10 shadow-sm">
+                Global
+              </span>
+            )}
+            
+            {/* Delete button - top right */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(material.id);
+              }}
+              className="absolute top-2 right-2 h-8 w-8 p-0 bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              disabled={deletingId === material.id}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+
+            {/* Edit button - appears on hover */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(material);
+              }}
+              className="absolute top-2 right-12 h-8 w-8 p-0 bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+
+            {/* Text at bottom with backdrop blur - becomes transparent on hover */}
+            <div className="absolute inset-x-0 bottom-0 px-4 py-3 z-[2]">
+              <div className="backdrop-blur-sm bg-black/20 group-hover:backdrop-blur-0 group-hover:bg-transparent rounded-lg px-3 py-2 transition-all duration-300">
+                <h3 className="font-semibold text-base text-white mb-1.5 line-clamp-1 drop-shadow-lg">
+                  {material.name}
+                </h3>
+                
+                <div className="flex items-center gap-2 text-xs text-white drop-shadow-md mb-1">
+                  <span className="inline-block bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded text-white/90">
+                    {material.category}
+                  </span>
+                </div>
+                
+                <div
+                  className="text-xs text-white/90 drop-shadow-md line-clamp-2"
+                  dangerouslySetInnerHTML={{ __html: material.prompt }}
                 />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  {currentGeneratingMaterial === material.name ? (
+              </div>
+            </div>
+
+            {/* Fallback for no image */}
+            {!hasImage && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 z-[1]">
+                <div className="text-center">
+                  {isGenerating ? (
                     <div className="flex flex-col items-center gap-2">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                       <span className="text-xs text-gray-500">Generating...</span>
                     </div>
                   ) : (
-                    <Image className="h-12 w-12 text-gray-300" />
+                    <>
+                      <Image className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500 font-medium">{material.name}</p>
+                    </>
                   )}
                 </div>
-              )}
-              {material.isGlobal && (
-                <span className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded z-10 shadow-sm">
-                  Global
-                </span>
-              )}
-            </div>
-
-          {/* Content */}
-          <div className="p-4">
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-gray-900 truncate">{material.name}</h3>
-                <span className="inline-block mt-1 text-xs bg-blue-100 text-blue-800 font-medium px-2 py-1 rounded">
-                  {material.category}
-                </span>
               </div>
-            </div>
-
-            <div
-              className="text-sm text-gray-900 mt-2 line-clamp-2"
-              style={{ color: '#111827' }}
-              dangerouslySetInnerHTML={{ __html: material.prompt }}
-            />
-
-            {/* Actions */}
-            <div className="flex gap-2 mt-4">
-              <Button
-                onClick={() => onEdit(material)}
-                variant="outline"
-                size="sm"
-                className="flex-1"
-              >
-                <Edit className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-              <Button
-                onClick={() => handleDelete(material.id)}
-                variant="outline"
-                size="sm"
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                disabled={deletingId === material.id}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

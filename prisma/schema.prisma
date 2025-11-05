@@ -48,6 +48,8 @@ model Project {
   totalCost         Float            @default(0.0)
   // Custom system prompt for chat
   customSystemPrompt String?
+  // LLM generation parameters (temperature, topP, topK, maxOutputTokens, etc.)
+  llmParameters     Json?
 }
 
 model Message {

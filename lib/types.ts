@@ -25,6 +25,8 @@ export interface Project {
   totalCost?: number;
   // Custom system prompt for chat
   customSystemPrompt?: string | null;
+  // Last generated image URL for preview
+  lastImageUrl?: string | null;
 }
 
 export interface Message {

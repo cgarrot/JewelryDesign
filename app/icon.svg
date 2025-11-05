@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="sparkleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f472b6" stop-opacity="1" />
+      <stop offset="30%" stop-color="#ec4899" stop-opacity="1" />
+      <stop offset="60%" stop-color="#a855f7" stop-opacity="1" />
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="1" />
+    </linearGradient>
+    <linearGradient id="sparkleIconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fecdd3" stop-opacity="1" />
+      <stop offset="50%" stop-color="#f9a8d4" stop-opacity="1" />
+      <stop offset="100%" stop-color="#e9d5ff" stop-opacity="1" />
+    </linearGradient>
+    <radialGradient id="sparkleGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#fff" stop-opacity="0.2" />
+    </radialGradient>
+  </defs>
+  <rect width="24" height="24" rx="5" fill="url(#sparkleGradient)"/>
+  <rect width="24" height="24" rx="5" fill="url(#sparkleGlow)"/>
+  <path d="m12 6-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 6Z" fill="url(#sparkleIconGradient)" stroke="#fff" stroke-width="0.5" opacity="0.95"/>
+  <circle cx="6" cy="6" r="1.3" fill="#fff" opacity="0.9"/>
+  <circle cx="18" cy="6" r="1.3" fill="#fff" opacity="0.9"/>
+  <circle cx="6" cy="18" r="1.3" fill="#fff" opacity="0.9"/>
+  <circle cx="18" cy="18" r="1.3" fill="#fff" opacity="0.9"/>
+</svg>
+

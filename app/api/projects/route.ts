@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { getImageUrl } from "@/lib/minio";
 import {
   successResponse,
   errorResponse,
@@ -42,7 +43,31 @@ export const GET = withErrorHandling(async () => {
     },
   });
 
-  return successResponse({ projects });
+  // Get the last generated image for each project
+  const projectsWithLastImage = await Promise.all(
+    projects.map(async (project) => {
+      // Get the most recent image for this project
+      const lastImage = await prisma.generatedImage.findFirst({
+        where: { projectId: project.id },
+        orderBy: { createdAt: "desc" },
+        select: {
+          imageData: true,
+        },
+      });
+
+      // Get the URL for the last image if it exists
+      const lastImageUrl = lastImage
+        ? await getImageUrl(lastImage.imageData)
+        : null;
+
+      return {
+        ...project,
+        lastImageUrl,
+      };
+    })
+  );
+
+  return successResponse({ projects: projectsWithLastImage });
 });
 
 // POST create new project

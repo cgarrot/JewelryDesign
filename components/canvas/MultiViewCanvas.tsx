@@ -140,7 +140,7 @@ export function MultiViewCanvas({
               </>
             ) : (
               <>
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="h-4 w-4" style={{ stroke: 'url(#sparklesGradient)' }} />
                 Generate 4 Views
               </>
             )}
@@ -152,7 +152,7 @@ export function MultiViewCanvas({
         {!hasViews ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-gray-500 max-w-md">
-              <Sparkles className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <Sparkles className="h-12 w-12 mx-auto mb-4" style={{ stroke: 'url(#sparklesGradient)' }} />
               <p className="text-lg font-medium mb-2">No Views Generated Yet</p>
               <p className="text-sm mb-4">
                 Generate a design first, then create 4 different perspectives from the most recent image.

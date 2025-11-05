@@ -24,3 +24,37 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Gradient pour les icônes Sparkles */
+.sparkles-gradient {
+  background: linear-gradient(135deg, #f472b6 0%, #ec4899 30%, #be185d 50%, #a855f7 70%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.sparkles-gradient svg {
+  stroke: url(#sparklesGradient);
+}
+
+/* Alternative avec fill pour les icônes */
+.sparkles-gradient-fill {
+  fill: url(#sparklesGradient);
+}
+
+/* Style pour les icônes avec gradient */
+.sparkles-gradient-icon {
+  background: linear-gradient(135deg, #f472b6 0%, #ec4899 25%, #be185d 40%, #a855f7 60%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Material Editor Placeholder */
+.material-editor-placeholder:empty:before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}

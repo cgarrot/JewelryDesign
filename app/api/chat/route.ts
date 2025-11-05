@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getChatModel } from "@/lib/gemini";
+import { getChatModel, parseGenerationConfig } from "@/lib/gemini";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import {
@@ -237,8 +237,11 @@ The "message" field should contain the exact same formatted markdown text you wo
 
   const systemPrompt = project.customSystemPrompt || defaultSystemPrompt;
 
+  // Parse and use LLM parameters from project if available
+  const generationConfig = parseGenerationConfig(project.llmParameters);
+
   // Call Gemini API
-  const model = getChatModel();
+  const model = getChatModel(generationConfig);
   const result = await model.generateContent({
     contents: [
       {

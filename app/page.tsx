@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ProjectList } from '@/components/projects/ProjectList';
-import { Gem, Library } from 'lucide-react';
+import { Sparkles, Library } from 'lucide-react';
 import { Project, ImageFormat, ImageAspectRatio } from '@/lib/types';
 import { toastError } from '@/lib/toast';
 import Link from 'next/link';
@@ -74,7 +74,7 @@ export default function Home() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <Gem className="h-12 w-12 mx-auto mb-4 text-gray-400 animate-pulse" />
+          <Sparkles className="h-12 w-12 mx-auto mb-4 animate-pulse" style={{ stroke: 'url(#sparklesGradient)' }} />
           <p className="text-gray-600">Loading projects...</p>
         </div>
       </div>
@@ -86,7 +86,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Gem className="h-10 w-10 text-gray-900" />
+            <Sparkles className="h-10 w-10" style={{ stroke: 'url(#sparklesGradient)' }} />
             <h1 className="text-4xl font-bold text-gray-900">Jewelry Design Studio</h1>
           </div>
           <p className="text-gray-600 text-lg">

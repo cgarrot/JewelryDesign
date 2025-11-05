@@ -585,7 +585,7 @@ export function ImageCanvas({
                     value={annotations}
                     onChange={(e) => setAnnotations(e.target.value)}
                     placeholder="E.g., Make the pearl larger, adjust the flower petals, change the band width..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px] text-gray-900 bg-white"
                   />
                 </div>
 
@@ -654,7 +654,7 @@ export function ImageCanvas({
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-gray-500">
-              <Sparkles className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <Sparkles className="h-12 w-12 mx-auto mb-4" style={{ stroke: 'url(#sparklesGradient)' }} />
               <p className="text-lg font-medium mb-2">No Images Yet</p>
               <p className="text-sm">
                 Chat about your design, then generate an image
