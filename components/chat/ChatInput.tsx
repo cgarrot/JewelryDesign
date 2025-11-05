@@ -1,20 +1,36 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { MaterialAutocomplete } from './MaterialAutocomplete';
 import { Material } from '@/lib/types';
+
+interface EditingMessage {
+  id: string;
+  content: string;
+}
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   projectId?: string;
   onAutoRegenerateChange?: (autoRegenerate: boolean) => void;
+  editingMessage?: EditingMessage | null;
+  onEditCancel?: () => void;
+  onEditSubmit?: (messageId: string, content: string) => void;
 }
 
-export function ChatInput({ onSend, disabled, projectId, onAutoRegenerateChange }: ChatInputProps) {
+export function ChatInput({ 
+  onSend, 
+  disabled, 
+  projectId, 
+  onAutoRegenerateChange,
+  editingMessage,
+  onEditCancel,
+  onEditSubmit,
+}: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
@@ -24,6 +40,23 @@ export function ChatInput({ onSend, disabled, projectId, onAutoRegenerateChange 
   const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   const [autoRegenerate, setAutoRegenerate] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync message with editingMessage when in edit mode
+  useEffect(() => {
+    if (editingMessage) {
+      setMessage(editingMessage.content);
+      // Focus textarea when entering edit mode
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(
+          editingMessage.content.length,
+          editingMessage.content.length
+        );
+      }, 0);
+    } else {
+      setMessage('');
+    }
+  }, [editingMessage]);
 
   // Fetch materials on mount
   useEffect(() => {
@@ -36,7 +69,7 @@ export function ChatInput({ onSend, disabled, projectId, onAutoRegenerateChange 
       const filteredMaterials = materials.filter((m) =>
         m.name.toLowerCase().includes(autocompleteQuery.toLowerCase())
       );
-      const visibleCount = Math.min(filteredMaterials.length, 10);
+      const visibleCount = filteredMaterials.length;
       setSelectedMaterialIndex((prev) => {
         if (prev >= visibleCount && visibleCount > 0) {
           return visibleCount - 1;
@@ -104,10 +137,24 @@ export function ChatInput({ onSend, disabled, projectId, onAutoRegenerateChange 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !disabled) {
-      onSend(message.trim());
-      setMessage('');
+      if (editingMessage && onEditSubmit) {
+        // In edit mode, call onEditSubmit
+        onEditSubmit(editingMessage.id, message.trim());
+      } else {
+        // Normal mode, send new message
+        onSend(message.trim());
+        setMessage('');
+      }
       setShowAutocomplete(false);
     }
+  };
+
+  const handleCancelEdit = () => {
+    if (onEditCancel) {
+      onEditCancel();
+    }
+    setMessage('');
+    setShowAutocomplete(false);
   };
 
   // Parse message to extract mentions - only return exact matches with materials
@@ -204,7 +251,7 @@ export function ChatInput({ onSend, disabled, projectId, onAutoRegenerateChange 
       const filteredMaterials = materials.filter((m) =>
         m.name.toLowerCase().includes(autocompleteQuery.toLowerCase())
       );
-      const visibleCount = Math.min(filteredMaterials.length, 10);
+      const visibleCount = filteredMaterials.length;
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -236,17 +283,38 @@ export function ChatInput({ onSend, disabled, projectId, onAutoRegenerateChange 
 
   const mentions = extractMentions(message);
 
+  const isEditing = !!editingMessage;
+
   return (
-    <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4 relative">
+    <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3 sm:p-4 relative h-full flex flex-col pt-4 sm:pt-5">
+      {/* Edit mode indicator */}
+      {isEditing && (
+        <div className="mb-2 flex items-center gap-1.5 px-2 py-0.5 flex-shrink-0">
+          <span className="text-xs text-blue-600">Editing message</span>
+          {onEditCancel && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleCancelEdit}
+              className="h-4 w-4 p-0 ml-auto text-blue-600 hover:text-blue-900 hover:bg-transparent"
+              title="Cancel edit"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Mentions tags display */}
       {mentions.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div className="mb-2 flex flex-wrap gap-1.5 sm:gap-2 flex-shrink-0">
           {mentions.map((mentionName) => {
             const material = materials.find((m) => m.name === mentionName);
             return (
               <span
                 key={mentionName}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200"
+                className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200"
               >
                 @{mentionName}
               </span>
@@ -255,41 +323,56 @@ export function ChatInput({ onSend, disabled, projectId, onAutoRegenerateChange 
         </div>
       )}
       
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-1.5 mb-1">
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-900">
-            <input
-              type="checkbox"
-              checked={autoRegenerate}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setAutoRegenerate(checked);
-                onAutoRegenerateChange?.(checked);
-              }}
-              className="w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer"
-              disabled={disabled}
-            />
-            <span className="select-none">Auto-regenerate</span>
-          </label>
-        </div>
-        <div className="flex gap-2">
+      <div className="flex flex-col gap-2 flex-1 min-h-0">
+        {!isEditing && (
+          <div className="flex items-center gap-1.5 mb-1 flex-shrink-0">
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-900">
+              <input
+                type="checkbox"
+                checked={autoRegenerate}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setAutoRegenerate(checked);
+                  onAutoRegenerateChange?.(checked);
+                }}
+                className="w-4 h-4 sm:w-3.5 sm:h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 focus:ring-offset-0 cursor-pointer"
+                disabled={disabled}
+              />
+              <span className="select-none text-xs sm:text-xs">Auto-regenerate</span>
+            </label>
+          </div>
+        )}
+        <div className="flex gap-2 flex-1 min-h-0">
           <Textarea
             ref={textareaRef}
             value={message}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Describe your jewelry design... (use @ to mention materials)"
-            className="resize-none"
-            rows={3}
+            placeholder={isEditing ? "Edit your message..." : "Describe your jewelry design... (use @ to mention materials)"}
+            className="resize-none text-sm flex-1 min-h-0 overflow-y-auto"
             disabled={disabled}
           />
-          <Button
-            type="submit"
-            disabled={disabled || !message.trim()}
-            className="self-end"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+          <div className="flex flex-col gap-2 flex-shrink-0">
+            {isEditing && onEditCancel && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEdit}
+                disabled={disabled}
+                className="h-9 sm:h-10 px-2 sm:px-3"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              type="submit"
+              disabled={disabled || !message.trim()}
+              className="h-9 sm:h-10 w-9 sm:w-auto px-2 sm:px-4"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
       

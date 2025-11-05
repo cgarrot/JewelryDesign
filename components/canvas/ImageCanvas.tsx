@@ -433,31 +433,50 @@ export function ImageCanvas({
     }
   }, [restoreState]);
 
+  // Keyboard shortcut for undo (Ctrl+Z or Cmd+Z)
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl+Z (Windows/Linux) or Cmd+Z (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) {
+          handleUndo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, canUndo, handleUndo]);
+
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      <div className="border-b border-gray-200 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
+      <div className="border-b border-gray-200 p-3 sm:p-4 flex-shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">
               Jewelry Preview
             </h2>
-            <p className="text-sm text-gray-600">
+            <p className="text-xs sm:text-sm text-gray-600">
               {isEditing
                 ? "Draw modifications on the image"
                 : "AI-generated design"}
             </p>
           </div>
           {selectedImage && !isEditing && (
-            <div className="flex gap-2">
+            <div className="flex gap-1 sm:gap-2 flex-shrink-0">
               {regularImages.length >= 2 && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowComparison(true)}
                   disabled={loading}
+                  className="h-9 sm:h-10 px-2 sm:px-3"
                 >
-                  <GitCompare className="h-4 w-4 mr-2" />
-                  Compare
+                  <GitCompare className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Compare</span>
                 </Button>
               )}
               <Button
@@ -465,47 +484,51 @@ export function ImageCanvas({
                 size="sm"
                 onClick={() => setIsEditing(true)}
                 disabled={loading}
+                className="h-9 sm:h-10 px-2 sm:px-3"
               >
-                <Pencil className="h-4 w-4 mr-2" />
-                Annotate
+                <Pencil className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Annotate</span>
               </Button>
             </div>
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6">
         {selectedImage ? (
           <div className="space-y-4">
             {isEditing ? (
-              <div className="bg-white rounded-lg shadow-lg overflow-hidden p-4">
+              <div className="bg-white rounded-lg shadow-lg overflow-hidden p-3 sm:p-4">
                 {/* Annotation Toolbar */}
-                <div className="flex items-center gap-2 mb-4 pb-4 border-b">
-                  <Button variant="default" size="sm">
-                    <Pencil className="h-4 w-4 mr-1" />
-                    Pen
+                <div className="flex items-center gap-1 sm:gap-2 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b overflow-x-auto">
+                  <Button variant="default" size="sm" className="h-9 sm:h-10 px-2 sm:px-3 flex-shrink-0">
+                    <Pencil className="h-4 w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">Pen</span>
                   </Button>
-                  <ColorPicker color={penColor} onChange={setPenColor} />
+                  <div className="flex-shrink-0">
+                    <ColorPicker color={penColor} onChange={setPenColor} />
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleUndo}
                     disabled={!canUndo}
+                    className="h-9 sm:h-10 px-2 sm:px-3 flex-shrink-0"
                   >
-                    <UndoIcon className="h-4 w-4 mr-1" />
-                    Undo
+                    <UndoIcon className="h-4 w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">Undo</span>
                   </Button>
-                  <div className="flex items-center gap-2 ml-auto">
-                    <label className="text-sm text-gray-600">Size:</label>
+                  <div className="flex items-center gap-1 sm:gap-2 ml-auto flex-shrink-0">
+                    <label className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">Size:</label>
                     <input
                       type="range"
                       min="1"
                       max="20"
                       value={brushSize}
                       onChange={(e) => setBrushSize(Number(e.target.value))}
-                      className="w-20"
+                      className="w-16 sm:w-20"
                     />
-                    <span className="text-sm text-gray-600 w-8">
+                    <span className="text-xs sm:text-sm text-gray-600 w-6 sm:w-8 whitespace-nowrap">
                       {brushSize}px
                     </span>
                   </div>
@@ -513,6 +536,8 @@ export function ImageCanvas({
                     variant="outline"
                     size="sm"
                     onClick={handleResetCanvas}
+                    className="h-9 sm:h-10 w-9 sm:w-auto px-2 sm:px-3 flex-shrink-0"
+                    title="Reset canvas"
                   >
                     <UndoIcon className="h-4 w-4" />
                   </Button>
@@ -529,24 +554,24 @@ export function ImageCanvas({
                     onTouchStart={startDrawingTouch}
                     onTouchEnd={stopDrawingTouch}
                     onTouchCancel={stopDrawingTouch}
-                    className="cursor-crosshair max-w-full h-auto touch-none"
+                    className="cursor-crosshair max-w-full max-h-[60vh] sm:max-h-none w-auto h-auto touch-none"
                   />
                 </div>
 
                 {/* Color Tags Section */}
                 {usedColors.size > 0 && (
-                  <div className="mt-4 border-t pt-4">
-                    <label className="text-sm font-medium text-gray-700 mb-3 block">
+                  <div className="mt-3 sm:mt-4 border-t pt-3 sm:pt-4">
+                    <label className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3 block">
                       Color Tags (optional descriptions)
                     </label>
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2 sm:gap-3">
                       {Array.from(usedColors).map((color) => (
                         <div
                           key={color}
-                          className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200"
+                          className="flex items-center gap-1 sm:gap-2 p-1.5 sm:p-2 bg-gray-50 rounded-lg border border-gray-200 flex-1 min-w-[200px] sm:min-w-0 sm:flex-initial"
                         >
                           <div
-                            className="w-8 h-8 rounded border-2 border-gray-300 flex-shrink-0"
+                            className="w-6 h-6 sm:w-8 sm:h-8 rounded border-2 border-gray-300 flex-shrink-0"
                             style={{ backgroundColor: color }}
                             title={color}
                           />
@@ -560,15 +585,15 @@ export function ImageCanvas({
                                 [color]: e.target.value,
                               }));
                             }}
-                            className="w-40 text-sm text-gray-900 bg-white"
+                            className="flex-1 sm:w-40 text-xs sm:text-sm text-gray-900 bg-white min-w-0"
                           />
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => removeColorTag(color)}
-                            className="flex-shrink-0 h-8 w-8 p-0"
+                            className="flex-shrink-0 h-8 w-8 sm:h-9 sm:w-9 p-0"
                           >
-                            <Trash2 className="h-4 w-4 text-gray-500" />
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-gray-500" />
                           </Button>
                         </div>
                       ))}
@@ -577,29 +602,30 @@ export function ImageCanvas({
                 )}
 
                 {/* Description */}
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="mt-3 sm:mt-4">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                     Describe your modifications:
                   </label>
                   <textarea
                     value={annotations}
                     onChange={(e) => setAnnotations(e.target.value)}
                     placeholder="E.g., Make the pearl larger, adjust the flower petals, change the band width..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px] text-gray-900 bg-white"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] sm:min-h-[100px] text-sm text-gray-900 bg-white"
                   />
                 </div>
 
                 {/* Action Buttons */}
-                <div className="mt-4 flex gap-2 justify-end">
-                  <Button variant="outline" onClick={handleCancelEdit}>
-                    <X className="h-4 w-4 mr-2" />
-                    Cancel
+                <div className="mt-3 sm:mt-4 flex gap-2 justify-end">
+                  <Button variant="outline" onClick={handleCancelEdit} className="h-9 sm:h-10 px-3 sm:px-4">
+                    <X className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Cancel</span>
                   </Button>
                   <Button
                     onClick={handleSaveAnnotations}
                     disabled={!annotations.trim()}
+                    className="h-9 sm:h-10 px-3 sm:px-4"
                   >
-                    <Save className="h-4 w-4 mr-2" />
+                    <Save className="h-4 w-4 sm:mr-2" />
                     Save & Regenerate
                   </Button>
                 </div>
@@ -615,10 +641,10 @@ export function ImageCanvas({
                 </div>
                 {regularImages.length > 1 && (
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium text-gray-700">
+                    <h3 className="text-xs sm:text-sm font-medium text-gray-700">
                       All Designs
                     </h3>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {regularImages.slice(0, 9).map((image, index) => (
                         <div
                           key={image.id}
@@ -636,7 +662,7 @@ export function ImageCanvas({
                                 ? "Latest design"
                                 : `Previous design ${index}`
                             }
-                            className="w-full h-24 object-cover"
+                            className="w-full h-20 sm:h-24 object-cover"
                           />
                         </div>
                       ))}
@@ -665,7 +691,7 @@ export function ImageCanvas({
       </div>
 
       {!isEditing && (
-        <div className="border-t border-gray-200 p-4">
+        <div className="border-t border-gray-200 p-3 sm:p-4 flex-shrink-0">
           <ImageControls
             imageData={selectedImage?.imageData}
             onGenerateImage={onGenerateImage}

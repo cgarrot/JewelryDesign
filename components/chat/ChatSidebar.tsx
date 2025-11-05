@@ -1,18 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Settings, Sliders } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Settings, Sliders, Copy } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { SystemPromptModal } from './SystemPromptModal';
 import { LLMParametersModal } from './LLMParametersModal';
 import { Button } from '@/components/ui/button';
+import { toastSuccess, toastError } from '@/lib/toast';
+import { Message } from '@/lib/types';
 
-interface Message {
+interface StreamingMessage {
   id: string;
-  role: string;
+  role: "assistant";
   content: string;
-  createdAt: Date;
 }
 
 interface ChatSidebarProps {
@@ -20,14 +21,39 @@ interface ChatSidebarProps {
   onSendMessage: (message: string) => void;
   loading?: boolean;
   projectId?: string;
+  streamingMessage?: StreamingMessage | null;
   onAutoRegenerateChange?: (autoRegenerate: boolean) => void;
+  onEditMessage?: (message: Message) => void;
+  onDeleteMessage?: (messageId: string) => void;
+  onCopyMessage?: (content: string) => void;
+  editingMessage?: { id: string; content: string } | null;
+  onEditCancel?: () => void;
+  onEditSubmit?: (messageId: string, content: string) => void;
 }
 
-export function ChatSidebar({ messages, onSendMessage, loading, projectId, onAutoRegenerateChange }: ChatSidebarProps) {
+export function ChatSidebar({ 
+  messages, 
+  onSendMessage, 
+  loading, 
+  projectId,
+  streamingMessage,
+  onAutoRegenerateChange,
+  onEditMessage,
+  onDeleteMessage,
+  onCopyMessage,
+  editingMessage,
+  onEditCancel,
+  onEditSubmit,
+}: ChatSidebarProps) {
   const [isSystemPromptModalOpen, setIsSystemPromptModalOpen] = useState(false);
   const [isLLMParametersModalOpen, setIsLLMParametersModalOpen] = useState(false);
   const [hasCustomPrompt, setHasCustomPrompt] = useState(false);
   const [hasCustomLLMParams, setHasCustomLLMParams] = useState(false);
+  const [inputHeight, setInputHeight] = useState<number | null>(null);
+  const inputContainerRef = useRef<HTMLDivElement>(null);
+  const isResizingRef = useRef(false);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
 
   // Check if custom prompt and LLM parameters exist when projectId changes
   useEffect(() => {
@@ -75,9 +101,109 @@ export function ChatSidebar({ messages, onSendMessage, loading, projectId, onAut
     checkCustomLLMParams();
   };
 
+  // Handle resize from top
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current || !inputContainerRef.current) return;
+
+      const deltaY = startYRef.current - e.clientY; // Positive when dragging up
+      const newHeight = Math.max(80, Math.min(400, startHeightRef.current + deltaY));
+      setInputHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [inputHeight]);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!inputContainerRef.current) return;
+    
+    isResizingRef.current = true;
+    startYRef.current = e.clientY;
+    const currentHeight = inputHeight || inputContainerRef.current.offsetHeight;
+    startHeightRef.current = currentHeight;
+    
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleCopyConversation = async () => {
+    if (messages.length === 0) {
+      toastError('No conversation to copy');
+      return;
+    }
+
+    // Format messages as simple text conversation
+    const formattedMessages = messages.map((message) => {
+      // Remove markdown formatting and mentions, keep plain text
+      let cleanContent = message.content;
+      
+      // Remove @ mentions (replace @material with material)
+      cleanContent = cleanContent.replace(/@(\w+)/g, '$1');
+      
+      // Remove markdown formatting (basic cleanup)
+      // Remove bold/italic markers
+      cleanContent = cleanContent.replace(/\*\*(.*?)\*\*/g, '$1');
+      cleanContent = cleanContent.replace(/\*(.*?)\*/g, '$1');
+      cleanContent = cleanContent.replace(/_(.*?)_/g, '$1');
+      
+      // Remove code blocks
+      cleanContent = cleanContent.replace(/```[\s\S]*?```/g, '');
+      cleanContent = cleanContent.replace(/`([^`]+)`/g, '$1');
+      
+      // Remove links but keep text
+      cleanContent = cleanContent.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+      
+      // Clean up extra whitespace
+      cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').trim();
+      
+      const roleLabel = message.role === 'user' ? 'User' : 'Assistant';
+      return `${roleLabel}: ${cleanContent}`;
+    }).join('\n\n');
+
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(formattedMessages);
+        toastSuccess('Conversation copied to clipboard');
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = formattedMessages;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          toastSuccess('Conversation copied to clipboard');
+        } catch (err) {
+          toastError('Failed to copy conversation');
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      toastError('Failed to copy conversation');
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white border-r border-gray-200">
-      <div className="border-b border-gray-200 p-4">
+      <div className="border-b border-gray-200 p-3 sm:p-4 flex-shrink-0">
         <div className="flex items-center gap-2">
           {projectId && (
             <>
@@ -85,47 +211,82 @@ export function ChatSidebar({ messages, onSendMessage, loading, projectId, onAut
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsSystemPromptModalOpen(true)}
-                className="h-10 w-10 p-0 flex-shrink-0"
+                className="h-9 w-9 sm:h-10 sm:w-10 p-0 flex-shrink-0"
                 title="Customize system prompt"
               >
-                <Settings className="h-5 w-5" />
+                <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsLLMParametersModalOpen(true)}
-                className="h-10 w-10 p-0 flex-shrink-0"
+                className="h-9 w-9 sm:h-10 sm:w-10 p-0 flex-shrink-0"
                 title="Configure LLM parameters (temperature, topP, etc.)"
               >
-                <Sliders className="h-5 w-5" />
+                <Sliders className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
             </>
           )}
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-gray-900">Design Chat</h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCopyConversation}
+            disabled={messages.length === 0}
+            className="h-9 w-9 sm:h-10 sm:w-10 p-0 flex-shrink-0"
+            title="Copy entire conversation"
+          >
+            <Copy className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900">Design Chat</h2>
               {hasCustomPrompt && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 whitespace-nowrap">
                   Custom Prompt
                 </span>
               )}
               {hasCustomLLMParams && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                <span className="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 whitespace-nowrap">
                   Custom Params
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-600">Describe your jewelry piece</p>
+            <p className="text-xs sm:text-sm text-gray-600">Describe your jewelry piece</p>
           </div>
         </div>
       </div>
-      <MessageList messages={messages} loading={loading} />
-      <ChatInput 
-        onSend={onSendMessage} 
-        disabled={loading} 
-        projectId={projectId}
-        onAutoRegenerateChange={onAutoRegenerateChange}
-      />
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <MessageList 
+          messages={messages} 
+          loading={loading}
+          streamingMessage={streamingMessage}
+          onEdit={onEditMessage}
+          onDelete={onDeleteMessage}
+          onCopy={onCopyMessage}
+        />
+      </div>
+      <div 
+        ref={inputContainerRef}
+        className="flex-shrink-0 relative"
+        style={{ height: inputHeight !== null ? `${inputHeight}px` : undefined }}
+      >
+        <div
+          onMouseDown={handleResizeStart}
+          className="absolute top-0 left-0 right-0 h-3 cursor-ns-resize hover:bg-blue-200/30 transition-colors z-10 group flex items-center justify-center"
+          title="Drag to resize input area"
+        >
+          <div className="w-20 h-1 bg-gray-300 rounded-full group-hover:bg-blue-500 transition-colors" />
+        </div>
+        <ChatInput 
+          onSend={onSendMessage} 
+          disabled={loading} 
+          projectId={projectId}
+          onAutoRegenerateChange={onAutoRegenerateChange}
+          editingMessage={editingMessage}
+          onEditCancel={onEditCancel}
+          onEditSubmit={onEditSubmit}
+        />
+      </div>
       {projectId && (
         <>
           <SystemPromptModal

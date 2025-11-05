@@ -83,21 +83,21 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8 text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Sparkles className="h-10 w-10" style={{ stroke: 'url(#sparklesGradient)' }} />
-            <h1 className="text-4xl font-bold text-gray-900">Jewelry Design Studio</h1>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-6 sm:py-8 md:py-12">
+        <div className="mb-6 sm:mb-8 text-center">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+            <Sparkles className="h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10" style={{ stroke: 'url(#sparklesGradient)' }} />
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Jewelry Design Studio</h1>
           </div>
-          <p className="text-gray-600 text-lg">
+          <p className="text-gray-600 text-sm sm:text-base md:text-lg px-2">
             Create stunning jewelry designs with AI-powered image generation
           </p>
-          <div className="mt-4">
+          <div className="mt-3 sm:mt-4">
             <Link
               href="/materials"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+              className="inline-flex items-center gap-1.5 sm:gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm sm:text-base"
             >
-              <Library className="h-5 w-5" />
+              <Library className="h-4 w-4 sm:h-5 sm:w-5" />
               Materials Library
             </Link>
           </div>

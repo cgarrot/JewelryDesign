@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ImageCanvas } from "@/components/canvas/ImageCanvas";
 import { MultiViewCanvas } from "@/components/canvas/MultiViewCanvas";
-import { Project, GeneratedImage, ReferenceImage } from "@/lib/types";
+import { Project, GeneratedImage, ReferenceImage, Message } from "@/lib/types";
 import { toastError, toastSuccess } from "@/lib/toast";
 import { PriceDisplay } from "@/components/ui/PriceDisplay";
 
@@ -85,6 +85,16 @@ export default function ProjectPage({
   const [chatWidth, setChatWidth] = useState(400); // Default width in pixels
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<{
+    id: string;
+    content: string;
+  } | null>(null);
+  const [streamingMessage, setStreamingMessage] = useState<{
+    id: string;
+    role: "assistant";
+    content: string;
+  } | null>(null);
 
   useEffect(() => {
     params.then((p) => {
@@ -169,34 +179,311 @@ export default function ProjectPage({
   const handleSendMessage = async (message: string) => {
     if (!project) return;
 
+    // Optimistically add user message to local state immediately
+    // This ensures the message appears instantly before the API call completes
+    const tempUserMessageId = `temp-user-${Date.now()}`;
+    const optimisticUserMessage: Message = {
+      id: tempUserMessageId,
+      projectId: project.id,
+      role: "user",
+      content: message,
+      createdAt: new Date(),
+    };
+
+    // Update project state with optimistic message
+    // This makes the message appear immediately in the UI
+    setProject((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        messages: [...(prev.messages || []), optimisticUserMessage],
+      };
+    });
+
+    // Create a temporary streaming message ID
+    const streamingMessageId = `streaming-${Date.now()}`;
+    setStreamingMessage({
+      id: streamingMessageId,
+      role: "assistant",
+      content: "",
+    });
     setChatLoading(true);
+
     try {
+      // Use EventSource for Server-Sent Events (SSE)
+      // Note: EventSource only supports GET, so we'll use fetch with ReadableStream instead
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: project.id, message }),
       });
+
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to send message");
+        // If response is not ok, try to parse as JSON error
+        try {
+          const data = await response.json();
+          throw new Error(data.error || "Failed to send message");
+        } catch {
+          throw new Error("Failed to send message");
+        }
       }
-      const data = await response.json();
 
-      // Refresh project to get updated messages
-      await fetchProject();
+      // Check if response is streaming (text/event-stream)
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("text/event-stream")) {
+        // Handle streaming response
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-      // Automatically trigger image generation if auto-regenerate is enabled or LLM indicates it should
-      if (autoRegenerate || data.shouldGenerateImage) {
-        // Ensure we have the latest project state before generating
+        if (!reader) {
+          throw new Error("No response body");
+        }
+
+        let shouldGenerateImage = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === "chunk") {
+                  // Update streaming message with new chunk
+                  setStreamingMessage((prev) => {
+                    if (!prev) return null;
+                    return {
+                      ...prev,
+                      content: prev.content + data.text,
+                    };
+                  });
+                } else if (data.type === "done") {
+                  // Streaming complete
+                  shouldGenerateImage = data.shouldGenerateImage || false;
+                  // Clear streaming message - it will be replaced by the saved message
+                  setStreamingMessage(null);
+                } else if (data.type === "error") {
+                  throw new Error(data.error || "Streaming error");
+                }
+              } catch (e) {
+                // Ignore JSON parse errors for incomplete chunks
+                console.error("Error parsing SSE data:", e);
+              }
+            }
+          }
+        }
+
+        // Refresh project to get updated messages (including the saved user and assistant messages)
+        // This replaces the optimistic user message with the real one from the database
         await fetchProject();
-        await handleGenerateImage();
+
+        // Automatically trigger image generation if auto-regenerate is enabled or LLM indicates it should
+        if (autoRegenerate || shouldGenerateImage) {
+          await fetchProject();
+          await handleGenerateImage();
+        }
+      } else {
+        // Fallback to non-streaming response (backward compatibility)
+        const data = await response.json();
+        // Refresh project to get updated messages (including the saved user message)
+        await fetchProject();
+
+        if (autoRegenerate || data.shouldGenerateImage) {
+          await fetchProject();
+          await handleGenerateImage();
+        }
       }
     } catch (error) {
       toastError(
         error instanceof Error ? error.message : "Failed to send message"
       );
+      setStreamingMessage(null);
+
+      // On error, refresh to get the actual state (user message might still have been saved)
+      await fetchProject();
     } finally {
       setChatLoading(false);
+    }
+  };
+
+  const handleEditMessage = (message: Message) => {
+    setEditingMessage({ id: message.id, content: message.content });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+  };
+
+  const handleEditSubmit = async (messageId: string, content: string) => {
+    if (!project) return;
+
+    setChatLoading(true);
+    try {
+      // Get all messages to find the one being edited and subsequent ones
+      const messages = project.messages || [];
+      const editIndex = messages.findIndex((m) => m.id === messageId);
+      const messageToEdit = messages[editIndex];
+
+      if (editIndex === -1 || !messageToEdit) {
+        throw new Error("Message not found");
+      }
+
+      // Delete all messages after the edited one
+      const messagesToDelete = messages.slice(editIndex + 1);
+      for (const msg of messagesToDelete) {
+        const deleteResponse = await fetch(`/api/messages/${msg.id}`, {
+          method: "DELETE",
+        });
+        if (!deleteResponse.ok) {
+          const data = await deleteResponse.json();
+          throw new Error(data.error || "Failed to delete message");
+        }
+      }
+
+      // Update the edited message
+      const updateResponse = await fetch(`/api/messages/${messageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!updateResponse.ok) {
+        const data = await updateResponse.json();
+        throw new Error(data.error || "Failed to update message");
+      }
+
+      // Refresh project to get updated messages
+      await fetchProject();
+
+      // If the edited message is a user message, resend to get assistant response
+      // Note: The chat API will create a duplicate user message, so we'll need to handle that
+      if (messageToEdit.role === "user") {
+        const resendResponse = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: project.id, message: content }),
+        });
+        if (!resendResponse.ok) {
+          const data = await resendResponse.json();
+          throw new Error(data.error || "Failed to resend message");
+        }
+        const resendData = await resendResponse.json();
+
+        // Refresh to get the new messages (including the duplicate user message)
+        await fetchProject();
+
+        // Get the updated project to find and delete the duplicate user message
+        const refreshResponse = await fetch(`/api/projects/${project.id}`);
+        if (refreshResponse.ok) {
+          const refreshData = await refreshResponse.json();
+          const updatedMessages = refreshData.project?.messages || [];
+
+          // Find the duplicate: it should be the last user message with the same content
+          // and created after our update
+          const duplicateIndex = updatedMessages.findIndex(
+            (m: Message, idx: number) => {
+              return (
+                idx > editIndex &&
+                m.role === "user" &&
+                m.content === content &&
+                m.id !== messageId
+              );
+            }
+          );
+
+          if (duplicateIndex !== -1) {
+            const duplicateId = updatedMessages[duplicateIndex].id;
+            await fetch(`/api/messages/${duplicateId}`, {
+              method: "DELETE",
+            });
+          }
+        }
+
+        // Final refresh to get clean message list
+        await fetchProject();
+
+        // Clear edit mode
+        setEditingMessage(null);
+
+        // Automatically trigger image generation if auto-regenerate is enabled or LLM indicates it should
+        if (autoRegenerate || resendData.shouldGenerateImage) {
+          await fetchProject();
+          await handleGenerateImage();
+        }
+
+        toastSuccess("Message updated and conversation regenerated");
+      } else {
+        // If editing assistant message, just update and refresh
+        await fetchProject();
+        setEditingMessage(null);
+        toastSuccess("Message updated successfully");
+      }
+    } catch (error) {
+      toastError(
+        error instanceof Error ? error.message : "Failed to edit message"
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!project) return;
+
+    setChatLoading(true);
+    try {
+      const response = await fetch(`/api/messages/${messageId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete message");
+      }
+
+      // Refresh project to get updated messages
+      await fetchProject();
+      toastSuccess("Message deleted successfully");
+    } catch (error) {
+      toastError(
+        error instanceof Error ? error.message : "Failed to delete message"
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleCopyMessage = async (content: string) => {
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(content);
+        toastSuccess("Message copied to clipboard");
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement("textarea");
+        textArea.value = content;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand("copy");
+          toastSuccess("Message copied to clipboard");
+        } catch (err) {
+          toastError("Failed to copy message");
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      toastError("Failed to copy message");
     }
   };
 
@@ -436,25 +723,25 @@ export default function ProjectPage({
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <header className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
           <Button
             variant="ghost"
             onClick={() => router.push("/")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1 sm:gap-2 h-9 sm:h-10 px-2 sm:px-3 flex-shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            <span className="hidden sm:inline">Back</span>
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
             <Sparkles
-              className="h-5 w-5"
+              className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0"
               style={{ stroke: "url(#sparklesGradient)" }}
             />
             {isEditingName ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
                 <Input
                   value={editedName}
                   onChange={(e) => setEditedName(e.target.value)}
@@ -465,14 +752,14 @@ export default function ProjectPage({
                       handleCancelEditName();
                     }
                   }}
-                  className="text-lg font-semibold h-8 px-2 py-1"
+                  className="text-sm sm:text-lg font-semibold h-8 px-2 py-1 min-w-0 flex-1"
                   autoFocus
                 />
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleUpdateProjectName}
-                  className="h-8 w-8 p-0"
+                  className="h-8 w-8 sm:h-9 sm:w-9 p-0 flex-shrink-0"
                   title="Save"
                 >
                   <Check className="h-4 w-4 text-green-600" />
@@ -481,7 +768,7 @@ export default function ProjectPage({
                   variant="ghost"
                   size="sm"
                   onClick={handleCancelEditName}
-                  className="h-8 w-8 p-0"
+                  className="h-8 w-8 sm:h-9 sm:w-9 p-0 flex-shrink-0"
                   title="Cancel"
                 >
                   <X className="h-4 w-4 text-gray-600" />
@@ -489,31 +776,33 @@ export default function ProjectPage({
               </div>
             ) : (
               <h1
-                className="text-lg font-semibold text-gray-900 cursor-pointer hover:text-gray-700 flex items-center gap-2 group"
+                className="text-sm sm:text-lg font-semibold text-gray-900 cursor-pointer hover:text-gray-700 flex items-center gap-1 sm:gap-2 group min-w-0"
                 onClick={handleStartEditName}
                 title="Click to edit project name"
               >
-                <span>{project.name}</span>
-                <Pencil className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <span className="truncate">{project.name}</span>
+                <Pencil className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
               </h1>
             )}
-            {project.imageFormat && (
-              <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-md">
-                {project.imageFormat}
-              </span>
-            )}
-            {project.imageAspectRatio && (
-              <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-md">
-                {project.imageAspectRatio === "SQUARE" && "□"}
-                {project.imageAspectRatio === "HORIZONTAL" && "▭"}
-                {project.imageAspectRatio === "VERTICAL" && "▯"}{" "}
-                {project.imageAspectRatio}
-              </span>
-            )}
+            <div className="hidden sm:flex items-center gap-1 sm:gap-2 flex-shrink-0">
+              {project.imageFormat && (
+                <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-md whitespace-nowrap">
+                  {project.imageFormat}
+                </span>
+              )}
+              {project.imageAspectRatio && (
+                <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-md whitespace-nowrap">
+                  {project.imageAspectRatio === "SQUARE" && "□"}
+                  {project.imageAspectRatio === "HORIZONTAL" && "▭"}
+                  {project.imageAspectRatio === "VERTICAL" && "▯"}{" "}
+                  {project.imageAspectRatio}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5">
+        <div className="flex items-center gap-1 sm:gap-4 flex-shrink-0">
+          <div className="hidden md:block bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5">
             <PriceDisplay
               totalCost={project.totalCost || 0}
               totalInputTokens={project.totalInputTokens || 0}
@@ -522,38 +811,86 @@ export default function ProjectPage({
               compact={false}
             />
           </div>
+          <div className="md:hidden bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5">
+            <PriceDisplay
+              totalCost={project.totalCost || 0}
+              totalInputTokens={project.totalInputTokens || 0}
+              totalOutputTokens={project.totalOutputTokens || 0}
+              totalImagesGenerated={project.totalImagesGenerated || 0}
+              compact={true}
+            />
+          </div>
           <Button
             variant="outline"
             size="sm"
             onClick={handleExportProject}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1 sm:gap-2 h-9 sm:h-10 px-2 sm:px-3"
             title="Export project (Ctrl/Cmd + E)"
           >
             <FileDown className="h-4 w-4" />
-            Export
+            <span className="hidden sm:inline">Export</span>
+          </Button>
+          {/* Mobile chat toggle button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsMobileChatOpen(!isMobileChatOpen)}
+            className="md:hidden h-9 w-9 p-0 flex-shrink-0"
+            title={isMobileChatOpen ? "Close chat" : "Open chat"}
+          >
+            <MessageSquare className="h-4 w-4" />
           </Button>
         </div>
       </header>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Chat Sidebar */}
-        {chatCollapsed ? (
-          <div className="w-12 border-r border-gray-200 bg-white flex flex-col items-center py-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setChatCollapsed(false)}
-              className="flex flex-col items-center gap-1 h-auto p-2"
-              title="Expand chat"
-            >
-              <ChevronRight className="h-5 w-5" />
-              <MessageSquare className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : (
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Mobile Chat Overlay */}
+        {isMobileChatOpen && (
+          <>
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+              onClick={() => setIsMobileChatOpen(false)}
+            />
+            <div className="fixed inset-y-0 left-0 right-0 md:hidden z-50 flex flex-col bg-white">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Design Chat
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsMobileChatOpen(false)}
+                  className="h-9 w-9 p-0"
+                  title="Close chat"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <ChatSidebar
+                  messages={project.messages || []}
+                  onSendMessage={handleSendMessage}
+                  loading={chatLoading}
+                  projectId={project.id}
+                  streamingMessage={streamingMessage}
+                  onAutoRegenerateChange={setAutoRegenerate}
+                  onEditMessage={handleEditMessage}
+                  onDeleteMessage={handleDeleteMessage}
+                  onCopyMessage={handleCopyMessage}
+                  editingMessage={editingMessage}
+                  onEditCancel={handleCancelEdit}
+                  onEditSubmit={handleEditSubmit}
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Desktop Chat Sidebar */}
+        {!chatCollapsed && (
           <div
-            className="flex flex-col relative"
+            className="hidden md:flex flex-col relative"
             style={{
               width: `${chatWidth}px`,
               minWidth: "300px",
@@ -574,11 +911,18 @@ export default function ProjectPage({
               onSendMessage={handleSendMessage}
               loading={chatLoading}
               projectId={project.id}
+              streamingMessage={streamingMessage}
               onAutoRegenerateChange={setAutoRegenerate}
+              onEditMessage={handleEditMessage}
+              onDeleteMessage={handleDeleteMessage}
+              onCopyMessage={handleCopyMessage}
+              editingMessage={editingMessage}
+              onEditCancel={handleCancelEdit}
+              onEditSubmit={handleEditSubmit}
             />
-            {/* Resize handle */}
+            {/* Resize handle - hidden on mobile */}
             <div
-              className="absolute top-0 bottom-0 right-0 hover:bg-gray-300 cursor-ew-resize z-20 transition-colors touch-none"
+              className="absolute top-0 bottom-0 right-0 hover:bg-gray-300 cursor-ew-resize z-20 transition-colors touch-none hidden md:block"
               style={{ width: "8px", marginRight: "-4px" }}
               title="Drag to resize chat"
               onMouseDown={(e) => {
@@ -607,49 +951,34 @@ export default function ProjectPage({
                 document.addEventListener("mousemove", handleMove);
                 document.addEventListener("mouseup", handleUp);
               }}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                const touch = e.touches[0];
-                const startX = touch.clientX;
-                const startWidth = chatWidth;
-
-                const handleMove = (moveEvent: TouchEvent) => {
-                  moveEvent.preventDefault();
-                  const touch = moveEvent.touches[0];
-                  if (!touch) return;
-                  const diff = touch.clientX - startX;
-                  const newWidth = Math.max(
-                    300,
-                    Math.min(window.innerWidth * 0.6, startWidth + diff)
-                  );
-                  setChatWidth(newWidth);
-                };
-
-                const handleEnd = (e: TouchEvent) => {
-                  e.preventDefault();
-                  document.removeEventListener("touchmove", handleMove);
-                  document.removeEventListener("touchend", handleEnd);
-                };
-
-                document.addEventListener("touchmove", handleMove, {
-                  passive: false,
-                });
-                document.addEventListener("touchend", handleEnd, {
-                  passive: false,
-                });
-              }}
             />
           </div>
         )}
 
+        {/* Collapsed Chat Button - Desktop only */}
+        {chatCollapsed && (
+          <div className="hidden md:flex w-12 border-r border-gray-200 bg-white flex-col items-center py-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setChatCollapsed(false)}
+              className="flex flex-col items-center gap-1 h-auto p-2"
+              title="Expand chat"
+            >
+              <ChevronRight className="h-5 w-5" />
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         {/* Image Canvas */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {/* Tabs */}
-          <div className="border-b border-gray-200 bg-white px-4">
-            <div className="flex gap-2">
+          <div className="border-b border-gray-200 bg-white px-2 sm:px-4 overflow-x-auto">
+            <div className="flex gap-1 sm:gap-2 min-w-max">
               <button
                 onClick={() => setActiveTab("images")}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === "images"
                     ? "border-gray-900 text-gray-900"
                     : "border-transparent text-gray-500 hover:text-gray-700"
@@ -659,7 +988,7 @@ export default function ProjectPage({
               </button>
               <button
                 onClick={() => setActiveTab("views")}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === "views"
                     ? "border-gray-900 text-gray-900"
                     : "border-transparent text-gray-500 hover:text-gray-700"
@@ -669,7 +998,7 @@ export default function ProjectPage({
               </button>
               <button
                 onClick={() => setActiveTab("drawing")}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === "drawing"
                     ? "border-gray-900 text-gray-900"
                     : "border-transparent text-gray-500 hover:text-gray-700"

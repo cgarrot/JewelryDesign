@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { Material } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Edit, Trash2, Image } from 'lucide-react';
-import { useState } from 'react';
+import { Material } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Edit, Trash2, Image } from "lucide-react";
+import { useState } from "react";
 
-export type DisplayMode = 'grid' | 'simple-grid' | 'list';
+export type DisplayMode = "grid" | "simple-grid" | "list";
 
 interface MaterialsListProps {
   materials: Material[];
@@ -16,18 +16,18 @@ interface MaterialsListProps {
   currentGeneratingMaterial?: string | null;
 }
 
-export function MaterialsList({ 
-  materials, 
-  onEdit, 
-  onDelete, 
+export function MaterialsList({
+  materials,
+  onEdit,
+  onDelete,
   selectedCategory,
-  displayMode = 'grid',
-  currentGeneratingMaterial = null
+  displayMode = "grid",
+  currentGeneratingMaterial = null,
 }: MaterialsListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this material?')) {
+    if (confirm("Are you sure you want to delete this material?")) {
       setDeletingId(id);
       await onDelete(id);
       setDeletingId(null);
@@ -43,13 +43,15 @@ export function MaterialsList({
       <div className="text-center py-12 text-gray-500">
         <Image className="h-12 w-12 mx-auto mb-4 opacity-50" />
         <p>No materials found</p>
-        <p className="text-sm mt-2">Create your first material to get started</p>
+        <p className="text-sm mt-2">
+          Create your first material to get started
+        </p>
       </div>
     );
   }
 
   // Simple Grid View - Only images and title
-  if (displayMode === 'simple-grid') {
+  if (displayMode === "simple-grid") {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         {filteredMaterials.map((material) => (
@@ -66,18 +68,13 @@ export function MaterialsList({
                   alt={material.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.style.display = "none";
                   }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Image className="h-8 w-8 text-gray-300" />
                 </div>
-              )}
-              {material.isGlobal && (
-                <span className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded z-10 shadow-sm">
-                  Global
-                </span>
               )}
             </div>
 
@@ -94,14 +91,16 @@ export function MaterialsList({
   }
 
   // List View - Compact list format
-  if (displayMode === 'list') {
+  if (displayMode === "list") {
     return (
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
         {filteredMaterials.map((material, index) => (
           <div
             key={material.id}
             className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${
-              index !== filteredMaterials.length - 1 ? 'border-b border-gray-200' : ''
+              index !== filteredMaterials.length - 1
+                ? "border-b border-gray-200"
+                : ""
             }`}
           >
             {/* Preview Image */}
@@ -112,7 +111,7 @@ export function MaterialsList({
                   alt={material.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.style.display = "none";
                   }}
                 />
               ) : (
@@ -125,15 +124,12 @@ export function MaterialsList({
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-semibold text-gray-900 truncate">{material.name}</h3>
+                <h3 className="font-semibold text-gray-900 truncate">
+                  {material.name}
+                </h3>
                 <span className="inline-block text-xs bg-blue-100 text-blue-800 font-medium px-2 py-0.5 rounded">
                   {material.category}
                 </span>
-                {material.isGlobal && (
-                  <span className="inline-block text-xs bg-green-100 text-green-800 font-medium px-2 py-0.5 rounded">
-                    Global
-                  </span>
-                )}
               </div>
               <div
                 className="text-sm text-gray-600 line-clamp-1"
@@ -195,19 +191,12 @@ export function MaterialsList({
                 }}
               />
             )}
-            
+
             {/* Hover overlay for better feedback */}
             {hasImage && (
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all duration-300 z-[1]" />
             )}
-            
-            {/* Global badge */}
-            {material.isGlobal && (
-              <span className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded z-10 shadow-sm">
-                Global
-              </span>
-            )}
-            
+
             {/* Delete button - top right */}
             <Button
               variant="ghost"
@@ -241,13 +230,13 @@ export function MaterialsList({
                 <h3 className="font-semibold text-base text-white mb-1.5 line-clamp-1 drop-shadow-lg">
                   {material.name}
                 </h3>
-                
+
                 <div className="flex items-center gap-2 text-xs text-white drop-shadow-md mb-1">
                   <span className="inline-block bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded text-white/90">
                     {material.category}
                   </span>
                 </div>
-                
+
                 <div
                   className="text-xs text-white/90 drop-shadow-md line-clamp-2"
                   dangerouslySetInnerHTML={{ __html: material.prompt }}
@@ -262,12 +251,16 @@ export function MaterialsList({
                   {isGenerating ? (
                     <div className="flex flex-col items-center gap-2">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                      <span className="text-xs text-gray-500">Generating...</span>
+                      <span className="text-xs text-gray-500">
+                        Generating...
+                      </span>
                     </div>
                   ) : (
                     <>
                       <Image className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500 font-medium">{material.name}</p>
+                      <p className="text-sm text-gray-500 font-medium">
+                        {material.name}
+                      </p>
                     </>
                   )}
                 </div>
@@ -279,4 +272,3 @@ export function MaterialsList({
     </div>
   );
 }
-

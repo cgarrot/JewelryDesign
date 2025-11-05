@@ -1,0 +1,121 @@
+# Cursor Rules for Jewelry Design Studio
+
+## Project Overview
+This is an AI-powered jewelry design application built with Next.js 16, TypeScript, Prisma, PostgreSQL, MinIO, and Google Gemini AI. The app allows users to create jewelry designs through conversational AI and generate multi-view images.
+
+## Tech Stack
+- **Framework**: Next.js 16 (App Router) with TypeScript
+- **Database**: PostgreSQL with Prisma ORM
+- **Storage**: MinIO for object storage (images)
+- **AI**: Google Gemini 2.5 Flash & Gemini 2.5 Flash Image
+- **Styling**: Tailwind CSS 4
+- **UI Components**: Custom components in `/components/ui`
+
+## Code Style & Patterns
+
+### API Routes
+- All API routes are in `/app/api` using Next.js App Router conventions
+- Use route handlers (route.ts) with proper HTTP methods
+- Always validate input using Zod schemas (see `lib/types.ts`)
+- Handle errors consistently using `lib/errors.ts` helpers
+- Return proper HTTP status codes and error messages
+
+### Database
+- Use Prisma client from `lib/db.ts` (singleton pattern)
+- Always use transactions for multi-step operations
+- Follow cascade delete patterns (messages, images deleted with project)
+- Use proper indexes as defined in `schema.prisma`
+
+### File Storage
+- All images stored in MinIO, not in database
+- Use `lib/minio.ts` for all MinIO operations
+- Object keys should be descriptive and include project/image IDs
+- Serve images via `/api/images/[...path]` route
+
+### AI Integration
+- Use `lib/gemini.ts` for all Gemini API calls
+- Track usage (tokens, costs) per project
+- Support custom system prompts per project
+- Support LLM parameters (temperature, topP, topK, etc.) per project
+
+### Components
+- Use TypeScript for all components
+- Follow React Server Components pattern where appropriate
+- UI components in `/components/ui` should be reusable
+- Use Tailwind CSS for styling (no inline styles)
+- Use Lucide React for icons
+
+### Type Safety
+- Define types in `lib/types.ts`
+- Use Zod for runtime validation
+- Avoid `any` types - use proper TypeScript types
+- Use Prisma generated types where applicable
+
+## Key Patterns
+
+### Error Handling
+- Use `ApiError` from `lib/errors.ts` for API errors
+- Return proper status codes (400, 404, 500, etc.)
+- Log errors but don't expose sensitive details to clients
+
+### API Responses
+- Return JSON with consistent structure
+- Use `{ success: boolean, data?: T, error?: string }` pattern
+- Include error messages in error responses
+
+### Image Generation
+- Support multiple formats: PNG, JPEG, WEBP
+- Support multiple aspect ratios: SQUARE, HORIZONTAL, VERTICAL
+- Support multi-view generation (FRONT, SIDE, TOP, BOTTOM)
+- Group views using `viewSetId` UUID
+
+### Materials
+- Support global materials (available to all projects)
+- Support project-specific materials
+- Generate preview images for materials using AI
+- Use autocomplete in chat for material selection
+
+## File Structure
+- `/app` - Next.js app directory (pages and API routes)
+- `/components` - React components organized by feature
+- `/lib` - Utility functions, API clients, database client
+- `/prisma` - Database schema and migrations
+- `/scripts` - Utility scripts (seed data, etc.)
+
+## Environment Variables
+- `DATABASE_URL` - PostgreSQL connection string
+- `MINIO_*` - MinIO configuration (endpoint, port, keys, bucket)
+- `GEMINI_API_KEY` - Google Gemini API key
+
+## Common Tasks
+
+### Adding a New API Endpoint
+1. Create route handler in `/app/api/[route]/route.ts`
+2. Validate input with Zod
+3. Use Prisma for database operations
+4. Use MinIO for file operations if needed
+5. Return consistent JSON response
+6. Handle errors properly
+
+### Adding a New Database Model
+1. Update `prisma/schema.prisma`
+2. Create migration: `npm run db:migrate`
+3. Update types in `lib/types.ts` if needed
+
+### Adding a New Component
+1. Create component in appropriate `/components` subdirectory
+2. Use TypeScript with proper prop types
+3. Use Tailwind CSS for styling
+4. Make reusable components in `/components/ui`
+
+## Best Practices
+- Always validate user input
+- Use async/await for all async operations
+- Handle edge cases (empty arrays, null values, etc.)
+- Keep components focused and single-purpose
+- Use proper TypeScript types everywhere
+- Follow Next.js App Router conventions
+- Test API endpoints manually before committing
+- Use meaningful variable and function names
+- Add comments for complex logic
+

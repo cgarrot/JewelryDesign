@@ -4,18 +4,23 @@ import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Pencil, Trash2, Copy } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Message } from '@/lib/types';
 
-interface Message {
+interface StreamingMessage {
   id: string;
-  role: string;
-  content: string; // Always contains the formatted text for display (from JSON message field or plain text)
-  contentJson?: any; // Optional: structured JSON data for internal processing (not used for display)
-  createdAt: Date;
+  role: "assistant";
+  content: string;
 }
 
 interface MessageListProps {
   messages: Message[];
   loading?: boolean;
+  streamingMessage?: StreamingMessage | null;
+  onEdit?: (message: Message) => void;
+  onDelete?: (messageId: string) => void;
+  onCopy?: (content: string) => void;
 }
 
 // Function to parse @ mentions and return an array of text parts and mention parts
@@ -54,7 +59,7 @@ function parseMessageContent(content: string) {
   return parts;
 }
 
-export function MessageList({ messages, loading }: MessageListProps) {
+export function MessageList({ messages, loading, streamingMessage, onEdit, onDelete, onCopy }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -63,11 +68,16 @@ export function MessageList({ messages, loading }: MessageListProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, streamingMessage]);
+
+  // Combine messages with streaming message if it exists
+  const allMessages = streamingMessage 
+    ? [...messages, { ...streamingMessage, createdAt: new Date() } as Message]
+    : messages;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {messages.length === 0 ? (
+    <div className="h-full overflow-y-auto p-4 space-y-4">
+      {allMessages.length === 0 ? (
         <div className="flex items-center justify-center h-full text-gray-500">
           <div className="text-center">
             <p className="text-lg font-medium mb-2">Start Your Jewelry Design</p>
@@ -75,7 +85,8 @@ export function MessageList({ messages, loading }: MessageListProps) {
           </div>
         </div>
       ) : (
-        messages.map((message) => {
+        allMessages.map((message) => {
+          const isStreaming = streamingMessage && message.id === streamingMessage.id;
           // Use content field for display (same as before)
           // contentJson is available for internal processing but not needed here since
           // we always store the formatted message text in content field
@@ -85,8 +96,8 @@ export function MessageList({ messages, loading }: MessageListProps) {
           <div
             key={message.id}
             className={cn(
-              'flex',
-              message.role === 'user' ? 'justify-end' : 'justify-start'
+              'flex flex-col',
+              message.role === 'user' ? 'items-end' : 'items-start'
             )}
           >
             <div
@@ -94,9 +105,13 @@ export function MessageList({ messages, loading }: MessageListProps) {
                 'max-w-[80%] rounded-lg px-4 py-3',
                 message.role === 'user'
                   ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-900'
+                  : 'bg-gray-100 text-gray-900',
+                isStreaming && 'relative'
               )}
             >
+              {isStreaming && (
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+              )}
               <div className={cn(
                 "text-sm leading-snug whitespace-pre-wrap",
                 message.role === 'user'
@@ -176,11 +191,65 @@ export function MessageList({ messages, loading }: MessageListProps) {
                 })}
               </div>
             </div>
+            {/* Action buttons below the bubble - always visible, but not for streaming messages */}
+            {(onEdit || onDelete || onCopy) && !isStreaming && (
+              <div className={cn(
+                'flex gap-1 mt-1.5',
+                message.role === 'user' ? 'justify-end' : 'justify-start'
+              )}>
+                {onCopy && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onCopy(message.content);
+                    }}
+                    className="h-9 w-9 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                    title="Copy message"
+                  >
+                    <Copy className="h-5 w-5" />
+                  </Button>
+                )}
+                {onEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onEdit(message);
+                    }}
+                    className="h-9 w-9 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                    title="Edit message"
+                  >
+                    <Pencil className="h-5 w-5" />
+                  </Button>
+                )}
+                {onDelete && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDelete(message.id);
+                    }}
+                    className="h-9 w-9 p-0 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md"
+                    title="Delete message"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           );
         })
       )}
-      {loading && (
+      {/* Show loading indicator only if not streaming (streaming message replaces it) */}
+      {loading && !streamingMessage && (
         <div className="flex justify-start">
           <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100">
             <div className="flex gap-1">

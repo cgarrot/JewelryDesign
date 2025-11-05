@@ -120,35 +120,35 @@ export function MultiViewCanvas({
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      <div className="border-b border-gray-200 p-4 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">4 Views</h2>
-            <p className="text-sm text-gray-600">
+      <div className="border-b border-gray-200 p-3 sm:p-4 bg-white flex-shrink-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">4 Views</h2>
+            <p className="text-xs sm:text-sm text-gray-600">
               Different perspectives of your jewelry design
             </p>
           </div>
           <Button
             onClick={handleGenerateViews}
             disabled={disabled || isLoading || !images.some(img => !img.viewType)}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 h-9 sm:h-10 w-full sm:w-auto px-3 sm:px-4"
           >
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Generating...
+                <span className="text-sm sm:text-base">Generating...</span>
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" style={{ stroke: 'url(#sparklesGradient)' }} />
-                Generate 4 Views
+                <span className="text-sm sm:text-base">Generate 4 Views</span>
               </>
             )}
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6">
         {!hasViews ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-gray-500 max-w-md">
@@ -165,8 +165,8 @@ export function MultiViewCanvas({
             </div>
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="max-w-4xl mx-auto w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               {VIEW_ORDER.map((viewType) => {
                 const view = views.find(v => v.viewType === viewType);
                 if (!view) return null;
@@ -176,7 +176,7 @@ export function MultiViewCanvas({
                     key={viewType}
                     className="bg-white rounded-lg shadow-lg overflow-hidden relative group"
                   >
-                    <div className="absolute top-2 left-2 z-10 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm font-medium">
+                    <div className="absolute top-2 left-2 z-10 bg-black bg-opacity-50 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium">
                       {VIEW_LABELS[viewType]}
                     </div>
                     <div className="relative aspect-square bg-gray-100">
@@ -188,7 +188,7 @@ export function MultiViewCanvas({
                       />
                       <button
                         onClick={() => setExpandedView(viewType)}
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-50 text-white p-2 rounded hover:bg-opacity-70"
+                        className="absolute top-2 right-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-50 text-white p-2 rounded hover:bg-opacity-70 h-9 w-9 sm:h-auto sm:w-auto flex items-center justify-center"
                         title="View full size"
                       >
                         <Maximize2 className="h-4 w-4" />
@@ -205,22 +205,22 @@ export function MultiViewCanvas({
       {/* Expanded View Modal */}
       {expandedView && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-2 sm:p-4"
           onClick={() => setExpandedView(null)}
         >
-          <div className="relative max-w-4xl max-h-full">
-            <div className="bg-white rounded-lg p-4 mb-2 text-center">
-              <h3 className="text-lg font-semibold">{VIEW_LABELS[expandedView]}</h3>
+          <div className="relative max-w-4xl max-h-full w-full">
+            <div className="bg-white rounded-lg p-3 sm:p-4 mb-2 text-center">
+              <h3 className="text-base sm:text-lg font-semibold">{VIEW_LABELS[expandedView]}</h3>
             </div>
             <img
               src={views.find(v => v.viewType === expandedView)?.imageUrl || ''}
               alt={VIEW_LABELS[expandedView]}
-              className="max-w-full max-h-[80vh] object-contain rounded-lg"
+              className="max-w-full max-h-[85vh] sm:max-h-[80vh] object-contain rounded-lg"
               onClick={(e) => e.stopPropagation()}
             />
             <button
               onClick={() => setExpandedView(null)}
-              className="absolute top-0 right-0 m-4 text-white bg-black bg-opacity-50 hover:bg-opacity-70 rounded-full p-2"
+              className="absolute top-2 right-2 sm:top-0 sm:right-0 sm:m-4 text-white bg-black bg-opacity-50 hover:bg-opacity-70 rounded-full p-2 h-9 w-9 sm:h-auto sm:w-auto flex items-center justify-center text-xl sm:text-2xl font-bold"
               title="Close"
             >
               ×

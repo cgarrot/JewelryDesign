@@ -48,3 +48,6 @@ next-env.d.ts
 
 .history/*
 .history
+
+deploy.sh
+DEPLOYMENT.md

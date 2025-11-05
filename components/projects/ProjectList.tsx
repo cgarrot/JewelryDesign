@@ -64,12 +64,12 @@ export function ProjectList({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center gap-4">
-        <h2 className="text-2xl font-bold text-gray-900">Your Projects</h2>
-        <Button onClick={() => setIsCreating(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Project
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Your Projects</h2>
+        <Button onClick={() => setIsCreating(true)} className="w-full sm:w-auto h-9 sm:h-10 px-3 sm:px-4">
+          <Plus className="h-4 w-4 sm:mr-2" />
+          <span className="text-sm sm:text-base">New Project</span>
         </Button>
       </div>
 
@@ -96,7 +96,7 @@ export function ProjectList({
       )}
 
       {isCreating && (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
+        <div className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4 space-y-3 sm:space-y-4">
           <div>
             <Input
               type="text"
@@ -108,20 +108,21 @@ export function ProjectList({
                 if (e.key === 'Escape') setIsCreating(false);
               }}
               autoFocus
+              className="h-9 sm:h-10 text-sm sm:text-base"
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               Image Format (used for all generated images)
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               {(['PNG', 'JPEG', 'WEBP'] as ImageFormat[]).map((format) => (
                 <button
                   key={format}
                   type="button"
                   onClick={() => setSelectedFormat(format)}
-                  className={`px-4 py-2 text-sm font-medium rounded-md border transition-colors ${
+                  className={`px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md border transition-colors h-9 sm:h-10 ${
                     selectedFormat === format
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -131,7 +132,7 @@ export function ProjectList({
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-gray-500 mt-1.5 sm:mt-2">
               {selectedFormat === 'PNG' && 'Lossless quality, larger file size'}
               {selectedFormat === 'JPEG' && 'Good quality, smaller file size'}
               {selectedFormat === 'WEBP' && 'Modern format, excellent compression'}
@@ -139,16 +140,16 @@ export function ProjectList({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               Image Aspect Ratio (used for all generated images)
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               {(['SQUARE', 'HORIZONTAL', 'VERTICAL'] as ImageAspectRatio[]).map((ratio) => (
                 <button
                   key={ratio}
                   type="button"
                   onClick={() => setSelectedAspectRatio(ratio)}
-                  className={`px-4 py-2 text-sm font-medium rounded-md border transition-colors ${
+                  className={`px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md border transition-colors h-9 sm:h-10 ${
                     selectedAspectRatio === ratio
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -160,7 +161,7 @@ export function ProjectList({
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-gray-500 mt-1.5 sm:mt-2">
               {selectedAspectRatio === 'SQUARE' && '1:1 ratio (square format)'}
               {selectedAspectRatio === 'HORIZONTAL' && 'Landscape orientation (wider than tall)'}
               {selectedAspectRatio === 'VERTICAL' && 'Portrait orientation (taller than wide)'}
@@ -168,8 +169,8 @@ export function ProjectList({
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleCreate} size="sm">
-              Create
+            <Button onClick={handleCreate} size="sm" className="h-9 sm:h-10 px-3 sm:px-4 flex-1 sm:flex-initial">
+              <span className="text-sm sm:text-base">Create</span>
             </Button>
             <Button
               onClick={() => {
@@ -180,14 +181,15 @@ export function ProjectList({
               }}
               variant="outline"
               size="sm"
+              className="h-9 sm:h-10 px-3 sm:px-4 flex-1 sm:flex-initial"
             >
-              Cancel
+              <span className="text-sm sm:text-base">Cancel</span>
             </Button>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {filteredProjects.map((project) => (
           <ProjectCard
             key={project.id}

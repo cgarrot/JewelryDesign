@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 import {
   successResponse,
   validateRequestBody,
-  withErrorHandling,
+  errorResponse,
 } from "@/lib/api-helpers";
 import { NotFoundError } from "@/lib/errors";
 import { logError } from "@/lib/errors";
@@ -126,39 +126,51 @@ You must respond with ONLY a valid JSON object in this exact format:
   }
 }
 
-export const POST = withErrorHandling(async (request: NextRequest) => {
-  const { projectId, message } = await validateRequestBody(request, chatSchema);
+// Helper function to send SSE data
+function sendSSE(controller: ReadableStreamDefaultController, data: any) {
+  const chunk = `data: ${JSON.stringify(data)}\n\n`;
+  controller.enqueue(new TextEncoder().encode(chunk));
+}
 
-  // Verify project exists and get custom system prompt
-  const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project) {
-    throw new NotFoundError("Project", projectId);
-  }
+export const POST = async (request: NextRequest) => {
+  try {
+    const { projectId, message } = await validateRequestBody(
+      request,
+      chatSchema
+    );
 
-  // Save user message
-  await prisma.message.create({
-    data: {
-      projectId,
-      role: "user",
-      content: message,
-    },
-  });
+    // Verify project exists and get custom system prompt
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
+    if (!project) {
+      throw new NotFoundError("Project", projectId);
+    }
 
-  // Get conversation history
-  const messages = await prisma.message.findMany({
-    where: { projectId },
-    orderBy: { createdAt: "asc" },
-  });
+    // Save user message
+    await prisma.message.create({
+      data: {
+        projectId,
+        role: "user",
+        content: message,
+      },
+    });
 
-  // Build conversation context for Gemini
-  const conversationHistory = messages
-    .map(
-      (msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`
-    )
-    .join("\n");
+    // Get conversation history
+    const messages = await prisma.message.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "asc" },
+    });
 
-  // Use custom system prompt if available, otherwise use default
-  const defaultSystemPrompt = `You are a helpful jewelry design assistant. You help users design custom jewelry pieces by having a conversation about their preferences, style, materials, and desired features. 
+    // Build conversation context for Gemini
+    const conversationHistory = messages
+      .map(
+        (msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`
+      )
+      .join("\n");
+
+    // Use custom system prompt if available, otherwise use default
+    const defaultSystemPrompt = `You are a helpful jewelry design assistant. You help users design custom jewelry pieces by having a conversation about their preferences, style, materials, and desired features. 
 
 When the user describes a jewelry piece, provide thoughtful suggestions and ask clarifying questions using a structured format with multiple-choice options (a, b, c). Present each question with clear options, ensuring each option is on its own line. CRITICAL: Each question must have exactly 3 options (a, b, c) - never more than 3.
 
@@ -235,108 +247,295 @@ CRITICAL: You MUST respond with ONLY a valid JSON object. The JSON must have thi
 
 The "message" field should contain the exact same formatted markdown text you would have sent before - with all the questions, options, and formatting. The metadata is for internal processing only.`;
 
-  const systemPrompt = project.customSystemPrompt || defaultSystemPrompt;
+    const systemPrompt = project.customSystemPrompt || defaultSystemPrompt;
 
-  // Parse and use LLM parameters from project if available
-  const generationConfig = parseGenerationConfig(project.llmParameters);
+    // Parse and use LLM parameters from project if available
+    const generationConfig = parseGenerationConfig(project.llmParameters);
 
-  // Call Gemini API
-  const model = getChatModel(generationConfig);
-  const result = await model.generateContent({
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `${systemPrompt}\n\nConversation:\n${conversationHistory}`,
-          },
-        ],
+    // Create a streaming response
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Call Gemini API with streaming
+          const model = getChatModel(generationConfig);
+          // generateContentStream is async, so we need to await it
+          const streamingResult = await model.generateContentStream({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `${systemPrompt}\n\nConversation:\n${conversationHistory}`,
+                  },
+                ],
+              },
+            ],
+          });
+
+          let fullText = "";
+          let fullResponse: any = null;
+          let accumulatedJson = ""; // Accumulate JSON text for parsing
+          let lastStreamedMessageLength = 0; // Track how much of the message we've already streamed
+
+          // Helper function to extract message from streaming JSON
+          // Handles partial JSON by finding the message field and extracting its value
+          const extractMessageFromPartialJson = (
+            jsonText: string
+          ): string | null => {
+            // First, try to parse as complete JSON
+            try {
+              const parsed = JSON.parse(jsonText);
+              if (parsed.message && typeof parsed.message === "string") {
+                return parsed.message;
+              }
+            } catch {
+              // JSON is incomplete, extract message field manually
+            }
+
+            // Find the position of "message": "
+            const messageKeyPattern = /"message"\s*:\s*"/;
+            const keyMatch = jsonText.match(messageKeyPattern);
+
+            if (!keyMatch) {
+              return null; // Message field not found yet
+            }
+
+            // Start position of the message value (after the opening quote)
+            const valueStartIndex = keyMatch.index! + keyMatch[0].length;
+            const messageValue = jsonText.slice(valueStartIndex);
+
+            if (!messageValue) {
+              return null; // No value yet
+            }
+
+            // Extract the message value, handling escaped characters
+            // We need to find the end of the string, accounting for escapes
+            let extracted = "";
+            let i = 0;
+            let escaped = false;
+
+            while (i < messageValue.length) {
+              const char = messageValue[i];
+
+              if (escaped) {
+                // Handle escape sequences
+                if (char === "n") {
+                  extracted += "\n";
+                } else if (char === "t") {
+                  extracted += "\t";
+                } else if (char === "r") {
+                  extracted += "\r";
+                } else if (char === "\\") {
+                  extracted += "\\";
+                } else if (char === '"') {
+                  extracted += '"';
+                } else {
+                  extracted += "\\" + char; // Unknown escape, keep as is
+                }
+                escaped = false;
+              } else if (char === "\\") {
+                escaped = true;
+              } else if (char === '"') {
+                // Found the closing quote, message is complete
+                break;
+              } else {
+                extracted += char;
+              }
+
+              i++;
+            }
+
+            // Return the extracted message (even if incomplete - no closing quote found yet)
+            return extracted || null;
+          };
+
+          // Stream chunks as they arrive
+          // According to the SDK, generateContentStream returns { stream, response }
+          // The stream is an async iterable
+          const stream = (streamingResult as any)?.stream;
+
+          if (!stream) {
+            const errorMsg = `Stream not accessible. Result keys: ${Object.keys(
+              streamingResult as any
+            ).join(", ")}`;
+            logError(new Error(errorMsg), "chat-streaming");
+            throw new Error(
+              "Unable to access streaming response from Gemini API"
+            );
+          }
+
+          // Verify it's iterable before using it
+          if (typeof stream[Symbol.asyncIterator] !== "function") {
+            const errorMsg = `Stream is not iterable. Type: ${typeof stream}`;
+            logError(new Error(errorMsg), "chat-streaming");
+            throw new Error("Stream from Gemini API is not iterable");
+          }
+
+          for await (const chunk of stream) {
+            try {
+              const chunkText = chunk.text();
+              if (chunkText) {
+                fullText += chunkText;
+                accumulatedJson += chunkText;
+
+                // Try to extract message from accumulated JSON
+                const currentMessage =
+                  extractMessageFromPartialJson(accumulatedJson);
+
+                if (
+                  currentMessage &&
+                  currentMessage.length > lastStreamedMessageLength
+                ) {
+                  // We have new message content to stream
+                  const newMessageContent = currentMessage.slice(
+                    lastStreamedMessageLength
+                  );
+                  if (newMessageContent) {
+                    // Send only the new message text (not the raw JSON)
+                    sendSSE(controller, {
+                      type: "chunk",
+                      text: newMessageContent,
+                    });
+                    lastStreamedMessageLength = currentMessage.length;
+                  }
+                }
+              }
+              // Store the chunk which contains the response
+              fullResponse = chunk;
+            } catch (chunkError) {
+              logError(chunkError, "chat-streaming-chunk");
+              // Continue processing other chunks
+            }
+          }
+
+          // Get the complete response after streaming completes
+          // The fullResponse should have the complete response object
+          let response: any = null;
+          if (fullResponse?.response) {
+            response = fullResponse.response;
+          } else if ((streamingResult as any).response) {
+            // Try to get response from the streaming result
+            const resultResponse = (streamingResult as any).response;
+            response =
+              typeof resultResponse.then === "function"
+                ? await resultResponse
+                : resultResponse;
+          } else if (fullResponse) {
+            // Use the last chunk as response
+            response = fullResponse;
+          }
+
+          // Get the final text - prefer accumulated text over response.text()
+          const responseText = fullText || response?.text?.() || "";
+
+          // Try to parse as JSON first
+          const parsedResponse = parseChatResponseJson(responseText);
+          let assistantMessage: string;
+          let contentJson: ChatResponseJson | null = null;
+          let shouldGenerateImageFromJson = false;
+
+          if (parsedResponse) {
+            // Successfully parsed JSON
+            assistantMessage = parsedResponse.message; // Use the formatted message from JSON
+            contentJson = parsedResponse.json;
+            shouldGenerateImageFromJson =
+              parsedResponse.json.shouldGenerateImage;
+          } else {
+            // Fallback: Use text response as-is (backward compatibility)
+            assistantMessage = responseText;
+            logError(
+              new Error("Failed to parse JSON response, using text fallback"),
+              "chat-parse-json"
+            );
+          }
+
+          // Extract usage metadata from main chat response
+          const usageMetadata = response?.usageMetadata;
+          const inputTokens = usageMetadata?.promptTokenCount || 0;
+          const outputTokens = usageMetadata?.candidatesTokenCount || 0;
+
+          // Save assistant message with both content (text) and contentJson (structured data)
+          await prisma.message.create({
+            data: {
+              projectId,
+              role: "assistant",
+              content: assistantMessage, // Always store the text for display
+              contentJson: contentJson
+                ? (contentJson as unknown as Prisma.JsonValue)
+                : null, // Store JSON for internal processing
+            } as Prisma.MessageUncheckedCreateInput,
+          });
+
+          // Update project usage for main chat call
+          if (inputTokens > 0 || outputTokens > 0) {
+            const updatedProject = (await prisma.project.findUnique({
+              where: { id: projectId },
+            })) as any;
+            if (updatedProject) {
+              const newInputTokens =
+                (updatedProject.totalInputTokens || 0) + inputTokens;
+              const newOutputTokens =
+                (updatedProject.totalOutputTokens || 0) + outputTokens;
+              const newCost = calculateTotalCost(
+                newInputTokens,
+                newOutputTokens,
+                updatedProject.totalImagesGenerated || 0
+              );
+
+              await prisma.project.update({
+                where: { id: projectId },
+                data: {
+                  totalInputTokens: newInputTokens,
+                  totalOutputTokens: newOutputTokens,
+                  totalCost: newCost,
+                } as any, // Type assertion needed until Prisma types are regenerated
+              });
+            }
+          }
+
+          // Determine if image generation should happen
+          // If we have JSON with shouldGenerateImage, use it directly; otherwise use the decision function
+          let shouldGenerateImage = shouldGenerateImageFromJson;
+          if (!parsedResponse) {
+            // Fallback: Use LLM to determine if image generation should happen
+            const decisionResult = await determineIfShouldGenerateImage(
+              conversationHistory,
+              assistantMessage,
+              null, // No JSON available
+              model,
+              projectId
+            );
+            shouldGenerateImage = decisionResult.shouldGenerate;
+          }
+
+          // Send final message with metadata
+          sendSSE(controller, {
+            type: "done",
+            message: assistantMessage,
+            shouldGenerateImage: shouldGenerateImage,
+          });
+
+          controller.close();
+        } catch (error) {
+          logError(error, "chat-streaming");
+          sendSSE(controller, {
+            type: "error",
+            error: error instanceof Error ? error.message : "An error occurred",
+          });
+          controller.close();
+        }
       },
-    ],
-  });
+    });
 
-  const response = result.response;
-  const responseText = response.text();
-
-  // Try to parse as JSON first
-  const parsedResponse = parseChatResponseJson(responseText);
-  let assistantMessage: string;
-  let contentJson: ChatResponseJson | null = null;
-  let shouldGenerateImageFromJson = false;
-
-  if (parsedResponse) {
-    // Successfully parsed JSON
-    assistantMessage = parsedResponse.message; // Use the formatted message from JSON
-    contentJson = parsedResponse.json;
-    shouldGenerateImageFromJson = parsedResponse.json.shouldGenerateImage;
-  } else {
-    // Fallback: Use text response as-is (backward compatibility)
-    assistantMessage = responseText;
-    logError(
-      new Error("Failed to parse JSON response, using text fallback"),
-      "chat-parse-json"
-    );
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  } catch (error) {
+    // Handle validation/initialization errors before streaming starts
+    return errorResponse(error);
   }
-
-  // Extract usage metadata from main chat response
-  const usageMetadata = response.usageMetadata;
-  const inputTokens = usageMetadata?.promptTokenCount || 0;
-  const outputTokens = usageMetadata?.candidatesTokenCount || 0;
-
-  // Save assistant message with both content (text) and contentJson (structured data)
-  await prisma.message.create({
-    data: {
-      projectId,
-      role: "assistant",
-      content: assistantMessage, // Always store the text for display
-      contentJson: contentJson
-        ? (contentJson as unknown as Prisma.JsonValue)
-        : null, // Store JSON for internal processing
-    } as Prisma.MessageUncheckedCreateInput,
-  });
-
-  // Update project usage for main chat call
-  if (inputTokens > 0 || outputTokens > 0) {
-    const project = (await prisma.project.findUnique({
-      where: { id: projectId },
-    })) as any;
-    if (project) {
-      const newInputTokens = (project.totalInputTokens || 0) + inputTokens;
-      const newOutputTokens = (project.totalOutputTokens || 0) + outputTokens;
-      const newCost = calculateTotalCost(
-        newInputTokens,
-        newOutputTokens,
-        project.totalImagesGenerated || 0
-      );
-
-      await prisma.project.update({
-        where: { id: projectId },
-        data: {
-          totalInputTokens: newInputTokens,
-          totalOutputTokens: newOutputTokens,
-          totalCost: newCost,
-        } as any, // Type assertion needed until Prisma types are regenerated
-      });
-    }
-  }
-
-  // Determine if image generation should happen
-  // If we have JSON with shouldGenerateImage, use it directly; otherwise use the decision function
-  let shouldGenerateImage = shouldGenerateImageFromJson;
-  if (!parsedResponse) {
-    // Fallback: Use LLM to determine if image generation should happen
-    const decisionResult = await determineIfShouldGenerateImage(
-      conversationHistory,
-      assistantMessage,
-      null, // No JSON available
-      model,
-      projectId
-    );
-    shouldGenerateImage = decisionResult.shouldGenerate;
-  }
-
-  return successResponse({
-    message: assistantMessage, // Same text format as before
-    shouldGenerateImage: shouldGenerateImage,
-  });
-});
+};
